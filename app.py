@@ -161,12 +161,52 @@ def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None
         print(f"Error saving PO10 athlete: {e}")
 
 
+def get_cached_parkrun_athlete(athlete_id: str) -> dict:
+    """Try to get parkrun athlete from database cache."""
+    try:
+        athlete = ParkrunAthlete.query.filter_by(athlete_id=athlete_id).first()
+        if athlete:
+            return {
+                'name': athlete.name,
+                'athlete_id': athlete.athlete_id,
+                'total_runs': athlete.total_runs,
+                'results': [],  # We don't cache individual results
+                'stats': {
+                    'best_seconds': athlete.best_time_seconds,
+                    'average_seconds': athlete.average_time_seconds,
+                    'typical_avg_seconds': athlete.typical_avg_seconds,
+                    'recent_avg_seconds': athlete.recent_avg_seconds,
+                    'best_time': athlete.best_time,
+                    'average_time': athlete.average_time,
+                    'typical_avg_time': athlete.typical_avg_time,
+                    'recent_avg_time': athlete.recent_avg_time,
+                    'avg_age_grade': athlete.avg_age_grade,
+                    'recent_avg_age_grade': athlete.recent_avg_age_grade,
+                    'pb_date': athlete.pb_date,
+                    'pb_event': athlete.pb_event,
+                    'pb_age': athlete.pb_age,
+                    'trend': athlete.trend,
+                    'trend_message': athlete.trend_message,
+                    'outlier_count': athlete.outlier_count or 0,
+                    'normal_run_count': athlete.normal_run_count or 0,
+                    'total_runs': athlete.total_runs,
+                    'typical_median_seconds': athlete.typical_avg_seconds,  # Approximate
+                },
+                'from_cache': True,
+                'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
+            }
+    except Exception as e:
+        print(f"Error getting cached athlete: {e}")
+    return None
+
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """Main page - form and results."""
     results = None
     error = None
     comparison = None
+    from_cache = False
 
     if request.method == 'POST':
         athlete_id = request.form.get('athlete_id', '').strip()
@@ -180,8 +220,14 @@ def index():
             results = parkrun_scraper.get_athlete_results(athlete_id)
 
             if results.get('error'):
-                error = results['error']
-                results = None
+                # Try to get from cache if live scrape fails
+                cached = get_cached_parkrun_athlete(athlete_id)
+                if cached:
+                    results = cached
+                    from_cache = True
+                else:
+                    error = results['error'] + " (No cached data available)"
+                    results = None
             elif results.get('total_runs', 0) == 0:
                 error = f"No parkrun results found for athlete ID {athlete_id}. Please check the ID is correct."
                 results = None

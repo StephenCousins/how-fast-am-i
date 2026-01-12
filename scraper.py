@@ -1,11 +1,14 @@
 """
 Parkrun results scraper using requests and BeautifulSoup.
 Scrapes athlete results from their public parkrun profile.
+Supports ScraperAPI for bypassing IP blocks on cloud servers.
 """
 
+import os
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
+from urllib.parse import quote
 import re
 
 
@@ -13,6 +16,7 @@ class ParkrunScraper:
     """Scrapes parkrun athlete data from their public profile."""
 
     BASE_URL = "https://www.parkrun.org.uk/parkrunner"
+    SCRAPER_API_URL = "http://api.scraperapi.com"
 
     HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -36,6 +40,18 @@ class ParkrunScraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
+        # Check for ScraperAPI key (used on Railway to bypass IP blocks)
+        self.scraper_api_key = os.environ.get('SCRAPER_API_KEY')
+        if self.scraper_api_key:
+            print("ScraperAPI enabled for parkrun scraping")
+
+    def _get_url(self, target_url: str) -> str:
+        """Get the URL to fetch - either direct or via ScraperAPI."""
+        if self.scraper_api_key:
+            # Route through ScraperAPI to bypass IP blocks
+            encoded_url = quote(target_url, safe='')
+            return f"{self.SCRAPER_API_URL}?api_key={self.scraper_api_key}&url={encoded_url}&render=false"
+        return target_url
 
     def _parse_time_to_seconds(self, time_str: str) -> Optional[int]:
         """Convert time string (MM:SS or HH:MM:SS) to seconds."""
@@ -79,14 +95,17 @@ class ParkrunScraper:
             - stats: Calculated statistics (avg, best, etc.)
             - error: Error message if scraping failed
         """
-        url = f"{self.BASE_URL}/{athlete_id}/all/"
+        target_url = f"{self.BASE_URL}/{athlete_id}/all/"
 
         try:
-            # First visit the main parkrun page to get cookies
-            self.session.get("https://www.parkrun.org.uk/", timeout=10)
-
-            # Now fetch the athlete page
-            response = self.session.get(url, timeout=15)
+            if self.scraper_api_key:
+                # Use ScraperAPI - no need for cookies, they handle it
+                fetch_url = self._get_url(target_url)
+                response = self.session.get(fetch_url, timeout=60)  # Longer timeout for proxy
+            else:
+                # Direct request - first visit main page for cookies
+                self.session.get("https://www.parkrun.org.uk/", timeout=10)
+                response = self.session.get(target_url, timeout=15)
 
             if response.status_code == 403:
                 return {
