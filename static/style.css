@@ -135,6 +135,13 @@ header h1 {
     color: var(--text-light);
 }
 
+.data-source {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    font-style: italic;
+}
+
 /* Error Message */
 .error-message {
     background: #ffebee;

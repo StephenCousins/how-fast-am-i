@@ -181,8 +181,33 @@
 
         <footer>
             <p>Data sourced from <a href="https://www.thepowerof10.info" target="_blank">Power of 10</a></p>
-            <p>Comparison data from <a href="https://runninglevel.com" target="_blank">runninglevel.com</a></p>
+            <p>Comparison data from <a href="https://runrepeat.com" target="_blank">RunRepeat</a> (107.9M race results)</p>
         </footer>
     </div>
+
+    <script>
+        (function() {
+            const STORAGE_KEY = 'po10_athlete_id';
+            const form = document.querySelector('.search-form');
+            const input = document.getElementById('athlete_id');
+            const hasResults = document.querySelector('.results-section') !== null;
+
+            // Save athlete ID on form submit
+            form.addEventListener('submit', function() {
+                if (input.value) {
+                    sessionStorage.setItem(STORAGE_KEY, input.value);
+                }
+            });
+
+            // On page load, restore previous search if no results showing
+            if (!hasResults && !input.value) {
+                const savedId = sessionStorage.getItem(STORAGE_KEY);
+                if (savedId) {
+                    input.value = savedId;
+                    form.submit();
+                }
+            }
+        })();
+    </script>
 </body>
 </html>

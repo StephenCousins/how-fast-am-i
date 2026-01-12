@@ -259,33 +259,34 @@
                         </table>
                     </div>
 
+                    {% if comparison.distance_comparison %}
                     <div class="comparison-table-wrapper">
-                        <h4>vs Country 5K Averages</h4>
+                        <h4>vs Global 5K Average (RunRepeat)</h4>
                         <table class="comparison-table">
                             <thead>
                                 <tr>
-                                    <th>Country</th>
+                                    <th>Benchmark</th>
                                     <th>Average</th>
                                     <th>Difference</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for comp in comparison.country_comparisons %}
-                                <tr class="{{ 'faster' if comp.faster else 'slower' }}">
-                                    <td>{{ comp.country }}</td>
-                                    <td>{{ comp.average_time }}</td>
+                                <tr class="{{ 'faster' if comparison.distance_comparison.faster else 'slower' }}">
+                                    <td>{{ comparison.distance_comparison.name }}</td>
+                                    <td>{{ comparison.distance_comparison.average_time }}</td>
                                     <td>
-                                        {% if comp.faster %}
-                                        <span class="faster-badge">{{ comp.difference_str }} faster</span>
+                                        {% if comparison.distance_comparison.faster %}
+                                        <span class="faster-badge">{{ comparison.distance_comparison.difference_str }} faster</span>
                                         {% else %}
-                                        <span class="slower-badge">{{ comp.difference_str }} slower</span>
+                                        <span class="slower-badge">{{ comparison.distance_comparison.difference_str }} slower</span>
                                         {% endif %}
                                     </td>
                                 </tr>
-                                {% endfor %}
                             </tbody>
                         </table>
+                        <p class="data-source">Based on 107.9 million race results</p>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Recent Runs -->
@@ -325,8 +326,33 @@
 
         <footer>
             <p>Data sourced from <a href="https://www.parkrun.org.uk" target="_blank">parkrun.org.uk</a></p>
-            <p>Comparison data from parkrun statistics and <a href="https://runninglevel.com" target="_blank">runninglevel.com</a></p>
+            <p>Comparison data from <a href="https://runrepeat.com" target="_blank">RunRepeat</a> (107.9M race results)</p>
         </footer>
     </div>
+
+    <script>
+        (function() {
+            const STORAGE_KEY = 'parkrun_athlete_id';
+            const form = document.querySelector('.search-form');
+            const input = document.getElementById('athlete_id');
+            const hasResults = document.querySelector('.results-section') !== null;
+
+            // Save athlete ID on form submit
+            form.addEventListener('submit', function() {
+                if (input.value) {
+                    sessionStorage.setItem(STORAGE_KEY, input.value);
+                }
+            });
+
+            // On page load, restore previous search if no results showing
+            if (!hasResults && !input.value) {
+                const savedId = sessionStorage.getItem(STORAGE_KEY);
+                if (savedId) {
+                    input.value = savedId;
+                    form.submit();
+                }
+            }
+        })();
+    </script>
 </body>
 </html>
