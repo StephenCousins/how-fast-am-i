@@ -5,6 +5,8 @@ Also supports Power of 10 for multi-distance analysis.
 """
 
 import os
+import json
+from datetime import datetime
 from flask import Flask, render_template, request
 
 from scraper import ParkrunScraper
@@ -12,10 +14,151 @@ from po10_scraper import PowerOf10Scraper
 from comparisons import get_full_comparison, seconds_to_time_str
 from distance_comparisons import get_all_distance_comparisons, get_distance_comparison
 from age_grading import calculate_age_grade, get_age_grade_category, seconds_to_time_str as ag_time_str
+from models import db, ParkrunAthlete, PowerOf10Athlete, Lookup
 
 app = Flask(__name__)
+
+# Database configuration
+database_url = os.environ.get('DATABASE_URL', '')
+# Railway uses postgres:// but SQLAlchemy needs postgresql://
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///athletes.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize database
+db.init_app(app)
+
+# Create tables on startup
+with app.app_context():
+    db.create_all()
+
 parkrun_scraper = ParkrunScraper()
 po10_scraper = PowerOf10Scraper()
+
+
+def save_parkrun_athlete(athlete_id: str, results: dict):
+    """Save or update parkrun athlete data in the database."""
+    try:
+        stats = results.get('stats', {})
+
+        athlete = ParkrunAthlete.query.filter_by(athlete_id=athlete_id).first()
+
+        if athlete:
+            # Update existing record
+            athlete.name = results.get('name')
+            athlete.total_runs = results.get('total_runs')
+            athlete.best_time_seconds = stats.get('best_seconds')
+            athlete.average_time_seconds = stats.get('average_seconds')
+            athlete.typical_avg_seconds = stats.get('typical_avg_seconds')
+            athlete.recent_avg_seconds = stats.get('recent_avg_seconds')
+            athlete.best_time = stats.get('best_time')
+            athlete.average_time = stats.get('average_time')
+            athlete.typical_avg_time = stats.get('typical_avg_time')
+            athlete.recent_avg_time = stats.get('recent_avg_time')
+            athlete.avg_age_grade = stats.get('avg_age_grade')
+            athlete.recent_avg_age_grade = stats.get('recent_avg_age_grade')
+            athlete.pb_date = stats.get('pb_date')
+            athlete.pb_event = stats.get('pb_event')
+            athlete.pb_age = stats.get('pb_age')
+            athlete.trend = stats.get('trend')
+            athlete.trend_message = stats.get('trend_message')
+            athlete.outlier_count = stats.get('outlier_count', 0)
+            athlete.normal_run_count = stats.get('normal_run_count', 0)
+            athlete.updated_at = datetime.utcnow()
+            athlete.lookup_count += 1
+            athlete.last_lookup_at = datetime.utcnow()
+        else:
+            # Create new record
+            athlete = ParkrunAthlete(
+                athlete_id=athlete_id,
+                name=results.get('name'),
+                total_runs=results.get('total_runs'),
+                best_time_seconds=stats.get('best_seconds'),
+                average_time_seconds=stats.get('average_seconds'),
+                typical_avg_seconds=stats.get('typical_avg_seconds'),
+                recent_avg_seconds=stats.get('recent_avg_seconds'),
+                best_time=stats.get('best_time'),
+                average_time=stats.get('average_time'),
+                typical_avg_time=stats.get('typical_avg_time'),
+                recent_avg_time=stats.get('recent_avg_time'),
+                avg_age_grade=stats.get('avg_age_grade'),
+                recent_avg_age_grade=stats.get('recent_avg_age_grade'),
+                pb_date=stats.get('pb_date'),
+                pb_event=stats.get('pb_event'),
+                pb_age=stats.get('pb_age'),
+                trend=stats.get('trend'),
+                trend_message=stats.get('trend_message'),
+                outlier_count=stats.get('outlier_count', 0),
+                normal_run_count=stats.get('normal_run_count', 0),
+            )
+            db.session.add(athlete)
+
+        # Log the lookup
+        lookup = Lookup(
+            source='parkrun',
+            athlete_id=athlete_id,
+            athlete_name=results.get('name'),
+            ip_address=request.remote_addr
+        )
+        db.session.add(lookup)
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error saving parkrun athlete: {e}")
+
+
+def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None):
+    """Save or update Power of 10 athlete data in the database."""
+    try:
+        athlete = PowerOf10Athlete.query.filter_by(athlete_id=athlete_id).first()
+
+        pbs_json = json.dumps(results.get('pbs', {}))
+
+        if athlete:
+            # Update existing record
+            athlete.name = results.get('name')
+            athlete.club = results.get('club')
+            athlete.gender = results.get('gender')
+            athlete.age_group = results.get('age_group')
+            athlete.pbs_json = pbs_json
+            if overall_stats:
+                athlete.overall_percentile = overall_stats.get('percentile')
+                athlete.overall_age_grade = overall_stats.get('age_grade')
+                athlete.overall_ability_level = overall_stats.get('ability_level')
+            athlete.updated_at = datetime.utcnow()
+            athlete.lookup_count += 1
+            athlete.last_lookup_at = datetime.utcnow()
+        else:
+            # Create new record
+            athlete = PowerOf10Athlete(
+                athlete_id=athlete_id,
+                name=results.get('name'),
+                club=results.get('club'),
+                gender=results.get('gender'),
+                age_group=results.get('age_group'),
+                pbs_json=pbs_json,
+                overall_percentile=overall_stats.get('percentile') if overall_stats else None,
+                overall_age_grade=overall_stats.get('age_grade') if overall_stats else None,
+                overall_ability_level=overall_stats.get('ability_level') if overall_stats else None,
+            )
+            db.session.add(athlete)
+
+        # Log the lookup
+        lookup = Lookup(
+            source='po10',
+            athlete_id=athlete_id,
+            athlete_name=results.get('name'),
+            ip_address=request.remote_addr
+        )
+        db.session.add(lookup)
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error saving PO10 athlete: {e}")
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -65,6 +208,9 @@ def index():
                 comparison['alltime_comparison'] = get_full_comparison(
                     stats['average_seconds']
                 )
+
+                # Save to database
+                save_parkrun_athlete(athlete_id, results)
 
     return render_template(
         'index.html',
@@ -176,6 +322,9 @@ def power_of_10():
                         'age_grade_category_name': overall_ag_cat_name,
                     }
 
+                    # Save to database
+                    save_po10_athlete(athlete_id, results, results['overall'])
+
     return render_template(
         'power_of_10.html',
         results=results,
@@ -188,6 +337,35 @@ def power_of_10():
 def health():
     """Health check endpoint for Railway."""
     return {'status': 'healthy'}, 200
+
+
+@app.route('/stats')
+def stats():
+    """Show database statistics."""
+    try:
+        parkrun_count = ParkrunAthlete.query.count()
+        po10_count = PowerOf10Athlete.query.count()
+        lookup_count = Lookup.query.count()
+
+        # Recent lookups
+        recent_lookups = Lookup.query.order_by(Lookup.lookup_at.desc()).limit(10).all()
+
+        return {
+            'parkrun_athletes': parkrun_count,
+            'po10_athletes': po10_count,
+            'total_lookups': lookup_count,
+            'recent_lookups': [
+                {
+                    'source': l.source,
+                    'athlete_id': l.athlete_id,
+                    'name': l.athlete_name,
+                    'time': l.lookup_at.isoformat() if l.lookup_at else None
+                }
+                for l in recent_lookups
+            ]
+        }
+    except Exception as e:
+        return {'error': str(e)}, 500
 
 
 if __name__ == '__main__':
