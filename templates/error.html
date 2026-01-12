@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ error_title }} - How Fast Am I?</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>How Fast Am I?</h1>
+            <p class="subtitle">Compare your parkrun times to UK and worldwide averages</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <a href="/" class="nav-tab">Parkrun</a>
+            <a href="/power-of-10" class="nav-tab">Power of 10</a>
+        </nav>
+
+        <main>
+            <div class="error-page">
+                <h2>{{ error_title }}</h2>
+                <p class="error-message">{{ error_message }}</p>
+                {% if error_detail %}
+                <p class="error-detail">{{ error_detail }}</p>
+                {% endif %}
+                <div class="error-actions">
+                    <a href="/" class="button">Back to Home</a>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Data sourced from <a href="https://www.parkrun.org.uk" target="_blank">parkrun.org.uk</a></p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -8,6 +8,8 @@ import os
 import json
 from datetime import datetime
 from flask import Flask, render_template, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from scraper import ParkrunScraper
 from po10_scraper import PowerOf10Scraper
@@ -29,6 +31,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
 db.init_app(app)
+
+# Rate limiting configuration to protect ScraperAPI credits
+# Uses in-memory storage (resets on app restart)
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
 
 # Create tables on startup
 with app.app_context():
@@ -201,6 +212,8 @@ def get_cached_parkrun_athlete(athlete_id: str) -> dict:
 
 
 @app.route('/', methods=['GET', 'POST'])
+@limiter.limit("10 per minute", methods=["POST"])  # Stricter limit for parkrun (uses ScraperAPI)
+@limiter.limit("30 per hour", methods=["POST"])
 def index():
     """Main page - form and results."""
     results = None
@@ -267,6 +280,8 @@ def index():
 
 
 @app.route('/power-of-10', methods=['GET', 'POST'])
+@limiter.limit("15 per minute", methods=["POST"])  # Power of 10 (no ScraperAPI, more lenient)
+@limiter.limit("60 per hour", methods=["POST"])
 def power_of_10():
     """Power of 10 multi-distance analysis page."""
     results = None
@@ -380,12 +395,14 @@ def power_of_10():
 
 
 @app.route('/health')
+@limiter.exempt
 def health():
     """Health check endpoint for Railway."""
     return {'status': 'healthy'}, 200
 
 
 @app.route('/stats')
+@limiter.exempt
 def stats():
     """Show database statistics."""
     try:
@@ -412,6 +429,17 @@ def stats():
         }
     except Exception as e:
         return {'error': str(e)}, 500
+
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Handle rate limit exceeded errors."""
+    return render_template(
+        'error.html',
+        error_title="Rate Limit Exceeded",
+        error_message="You've made too many requests. Please wait a few minutes before trying again.",
+        error_detail=str(e.description)
+    ), 429
 
 
 if __name__ == '__main__':
