@@ -532,6 +532,7 @@ def stats():
             'parkrun_athletes': parkrun_count,
             'po10_athletes': po10_count,
             'total_lookups': lookup_count,
+            'refresh_cooldown_hours': REFRESH_COOLDOWN_HOURS,
             'recent_lookups': [
                 {
                     'source': l.source,
