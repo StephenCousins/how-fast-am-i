@@ -57,6 +57,10 @@ def save_parkrun_athlete(athlete_id: str, results: dict):
     try:
         stats = results.get('stats', {})
 
+        # Store last 10 results as JSON for display
+        recent_results = results.get('results', [])[:10]
+        recent_results_json = json.dumps(recent_results) if recent_results else None
+
         athlete = ParkrunAthlete.query.filter_by(athlete_id=athlete_id).first()
 
         if athlete:
@@ -80,6 +84,7 @@ def save_parkrun_athlete(athlete_id: str, results: dict):
             athlete.trend_message = stats.get('trend_message')
             athlete.outlier_count = stats.get('outlier_count', 0)
             athlete.normal_run_count = stats.get('normal_run_count', 0)
+            athlete.recent_results_json = recent_results_json
             athlete.updated_at = datetime.utcnow()
             athlete.lookup_count += 1
             athlete.last_lookup_at = datetime.utcnow()
@@ -106,6 +111,7 @@ def save_parkrun_athlete(athlete_id: str, results: dict):
                 trend_message=stats.get('trend_message'),
                 outlier_count=stats.get('outlier_count', 0),
                 normal_run_count=stats.get('normal_run_count', 0),
+                recent_results_json=recent_results_json,
             )
             db.session.add(athlete)
 
@@ -196,11 +202,19 @@ def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = True) -> dict
             if fresh_only and not is_cache_fresh(athlete.updated_at):
                 return None  # Cache is stale, need to refresh
 
+            # Parse recent results from JSON
+            recent_results = []
+            if athlete.recent_results_json:
+                try:
+                    recent_results = json.loads(athlete.recent_results_json)
+                except json.JSONDecodeError:
+                    recent_results = []
+
             return {
                 'name': athlete.name,
                 'athlete_id': athlete.athlete_id,
                 'total_runs': athlete.total_runs,
-                'results': [],  # We don't cache individual results
+                'results': recent_results,
                 'stats': {
                     'best_seconds': athlete.best_time_seconds,
                     'average_seconds': athlete.average_time_seconds,

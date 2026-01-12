@@ -46,6 +46,9 @@ class ParkrunAthlete(db.Model):
     outlier_count = db.Column(db.Integer, default=0)
     normal_run_count = db.Column(db.Integer, default=0)
 
+    # Recent results stored as JSON (last 10 runs for display)
+    recent_results_json = db.Column(db.Text)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
