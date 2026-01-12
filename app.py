@@ -282,29 +282,23 @@ def index():
         elif not athlete_id.isdigit():
             error = "Parkrun ID should be a number (e.g., 123456)"
         else:
-            # First, check for fresh cached data to avoid unnecessary scraping
-            cached = get_cached_parkrun_athlete(athlete_id, fresh_only=True)
+            # Check if athlete exists in database - always use cached data if available
+            cached = get_cached_parkrun_athlete(athlete_id)
             if cached:
                 results = cached
                 from_cache = True
             else:
-                # No fresh cache - need to scrape
+                # New athlete - need to scrape
                 results = parkrun_scraper.get_athlete_results(athlete_id)
 
                 if results.get('error'):
-                    # Scrape failed - try stale cache as fallback
-                    stale_cached = get_cached_parkrun_athlete(athlete_id, fresh_only=False)
-                    if stale_cached:
-                        results = stale_cached
-                        from_cache = True
-                    else:
-                        error = results['error'] + " (No cached data available)"
-                        results = None
+                    error = results['error']
+                    results = None
                 elif results.get('total_runs', 0) == 0:
                     error = f"No parkrun results found for athlete ID {athlete_id}. Please check the ID is correct."
                     results = None
                 else:
-                    # Save fresh data to database
+                    # Save new athlete to database
                     save_parkrun_athlete(athlete_id, results)
 
             # Generate comparisons if we have valid results
@@ -361,24 +355,18 @@ def power_of_10():
         elif not athlete_id.isdigit():
             error = "Athlete ID should be a number"
         else:
-            # First, check for fresh cached data to avoid unnecessary scraping
-            cached = get_cached_po10_athlete(athlete_id, fresh_only=True)
+            # Check if athlete exists in database - always use cached data if available
+            cached = get_cached_po10_athlete(athlete_id)
             if cached and cached.get('pbs'):
                 results = cached
                 from_cache = True
             else:
-                # No fresh cache - need to scrape
+                # New athlete - need to scrape
                 results = po10_scraper.get_athlete_by_id(athlete_id)
 
                 if results.get('error'):
-                    # Scrape failed - try stale cache as fallback
-                    stale_cached = get_cached_po10_athlete(athlete_id, fresh_only=False)
-                    if stale_cached and stale_cached.get('pbs'):
-                        results = stale_cached
-                        from_cache = True
-                    else:
-                        error = results['error']
-                        results = None
+                    error = results['error']
+                    results = None
                 elif not results.get('pbs'):
                     error = f"No PBs found for athlete ID {athlete_id}"
                     results = None
