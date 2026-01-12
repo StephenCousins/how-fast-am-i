@@ -11,8 +11,8 @@ from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-# Cache duration - don't re-scrape if data is newer than this
-CACHE_HOURS = int(os.environ.get('CACHE_HOURS', 24))
+# Minimum hours before refresh is allowed (prevents abuse)
+REFRESH_COOLDOWN_HOURS = int(os.environ.get('REFRESH_COOLDOWN_HOURS', 6))
 
 from scraper import ParkrunScraper
 from po10_scraper import PowerOf10Scraper
@@ -173,22 +173,28 @@ def log_lookup(source: str, athlete_id: str, athlete_name: str = None):
         print(f"Error logging lookup: {e}")
 
 
-def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = False) -> dict:
+def is_cache_fresh(updated_at: datetime) -> bool:
+    """Check if cached data is fresh enough (less than REFRESH_COOLDOWN_HOURS old)."""
+    if not updated_at:
+        return False
+    cache_age = datetime.utcnow() - updated_at
+    return cache_age < timedelta(hours=REFRESH_COOLDOWN_HOURS)
+
+
+def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = True) -> dict:
     """
     Try to get parkrun athlete from database cache.
 
     Args:
         athlete_id: The parkrun athlete ID
-        fresh_only: If True, only return if cache is less than CACHE_HOURS old
+        fresh_only: If True, only return if cache is fresh (< REFRESH_COOLDOWN_HOURS old)
     """
     try:
         athlete = ParkrunAthlete.query.filter_by(athlete_id=athlete_id).first()
         if athlete:
             # Check if cache is fresh enough
-            if fresh_only and athlete.updated_at:
-                cache_age = datetime.utcnow() - athlete.updated_at
-                if cache_age > timedelta(hours=CACHE_HOURS):
-                    return None  # Cache is stale
+            if fresh_only and not is_cache_fresh(athlete.updated_at):
+                return None  # Cache is stale, need to refresh
 
             return {
                 'name': athlete.name,
@@ -224,22 +230,20 @@ def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = False) -> dic
     return None
 
 
-def get_cached_po10_athlete(athlete_id: str, fresh_only: bool = False) -> dict:
+def get_cached_po10_athlete(athlete_id: str, fresh_only: bool = True) -> dict:
     """
     Try to get Power of 10 athlete from database cache.
 
     Args:
         athlete_id: The Power of 10 athlete ID
-        fresh_only: If True, only return if cache is less than CACHE_HOURS old
+        fresh_only: If True, only return if cache is fresh (< REFRESH_COOLDOWN_HOURS old)
     """
     try:
         athlete = PowerOf10Athlete.query.filter_by(athlete_id=athlete_id).first()
         if athlete:
             # Check if cache is fresh enough
-            if fresh_only and athlete.updated_at:
-                cache_age = datetime.utcnow() - athlete.updated_at
-                if cache_age > timedelta(hours=CACHE_HOURS):
-                    return None  # Cache is stale
+            if fresh_only and not is_cache_fresh(athlete.updated_at):
+                return None  # Cache is stale, need to refresh
 
             # Parse PBs from JSON
             pbs = json.loads(athlete.pbs_json) if athlete.pbs_json else {}
@@ -282,23 +286,29 @@ def index():
         elif not athlete_id.isdigit():
             error = "Parkrun ID should be a number (e.g., 123456)"
         else:
-            # Check if athlete exists in database - always use cached data if available
-            cached = get_cached_parkrun_athlete(athlete_id)
+            # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
+            cached = get_cached_parkrun_athlete(athlete_id, fresh_only=True)
             if cached:
                 results = cached
                 from_cache = True
             else:
-                # New athlete - need to scrape
+                # No fresh cache - scrape new data
                 results = parkrun_scraper.get_athlete_results(athlete_id)
 
                 if results.get('error'):
-                    error = results['error']
-                    results = None
+                    # Scraping failed - try stale cache as fallback
+                    stale_cache = get_cached_parkrun_athlete(athlete_id, fresh_only=False)
+                    if stale_cache:
+                        results = stale_cache
+                        from_cache = True
+                    else:
+                        error = results['error']
+                        results = None
                 elif results.get('total_runs', 0) == 0:
                     error = f"No parkrun results found for athlete ID {athlete_id}. Please check the ID is correct."
                     results = None
                 else:
-                    # Save new athlete to database
+                    # Save/update athlete in database
                     save_parkrun_athlete(athlete_id, results)
 
             # Generate comparisons if we have valid results
@@ -355,18 +365,24 @@ def power_of_10():
         elif not athlete_id.isdigit():
             error = "Athlete ID should be a number"
         else:
-            # Check if athlete exists in database - always use cached data if available
-            cached = get_cached_po10_athlete(athlete_id)
+            # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
+            cached = get_cached_po10_athlete(athlete_id, fresh_only=True)
             if cached and cached.get('pbs'):
                 results = cached
                 from_cache = True
             else:
-                # New athlete - need to scrape
+                # No fresh cache - scrape new data
                 results = po10_scraper.get_athlete_by_id(athlete_id)
 
                 if results.get('error'):
-                    error = results['error']
-                    results = None
+                    # Scraping failed - try stale cache as fallback
+                    stale_cache = get_cached_po10_athlete(athlete_id, fresh_only=False)
+                    if stale_cache and stale_cache.get('pbs'):
+                        results = stale_cache
+                        from_cache = True
+                    else:
+                        error = results['error']
+                        results = None
                 elif not results.get('pbs'):
                     error = f"No PBs found for athlete ID {athlete_id}"
                     results = None
