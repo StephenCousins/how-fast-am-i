@@ -44,9 +44,22 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-# Create tables on startup
+# Create tables on startup and run migrations
 with app.app_context():
     db.create_all()
+
+    # Migration: Add recent_results_json column if it doesn't exist
+    try:
+        from sqlalchemy import text, inspect
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('parkrun_athletes')]
+        if 'recent_results_json' not in columns:
+            db.session.execute(text('ALTER TABLE parkrun_athletes ADD COLUMN recent_results_json TEXT'))
+            db.session.commit()
+            print("Migration: Added recent_results_json column")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Migration check: {e}")
 
 parkrun_scraper = ParkrunScraper()
 po10_scraper = PowerOf10Scraper()
