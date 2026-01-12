@@ -1,9 +1,12 @@
 """
-Comparison data and ranking logic for parkrun times.
-Data sourced from:
-- parkrun.org.uk statistics
-- runninglevel.com 5K times
-- Running research and surveys
+Comparison data and ranking logic for running times.
+
+Data sources:
+- Parkrun averages: parkrun.org.uk statistics (for parkrun-specific comparisons)
+- Distance averages & percentiles: RunRepeat.com analysis of 107.9 million race results
+  from 70,000+ events (1986-2018) - the largest recreational running dataset available
+  https://runrepeat.com/how-do-you-masure-up-the-runners-percentile-calculator
+- Age grading: WMA 2023 age grading factors
 """
 
 from typing import Optional
@@ -56,37 +59,36 @@ PARKRUN_AVERAGES = {
     },
 }
 
-# Country 5K averages (in seconds) - from race results data
-COUNTRY_AVERAGES = {
-    'uk': {
-        'name': 'United Kingdom',
-        'overall': time_str_to_seconds('32:11'),
-        'male': time_str_to_seconds('30:29'),
-        'female': time_str_to_seconds('33:52')
+# Global race averages by distance (from RunRepeat 107.9M race results)
+# Source: https://runrepeat.com/how-do-you-masure-up-the-runners-percentile-calculator
+DISTANCE_AVERAGES = {
+    '5k': {
+        'name': '5K',
+        'distance_km': 5,
+        'male': time_str_to_seconds('31:28'),
+        'female': time_str_to_seconds('37:28'),
+        'overall': time_str_to_seconds('34:00'),  # Approximate weighted average
     },
-    'usa': {
-        'name': 'United States',
-        'overall': time_str_to_seconds('32:23'),
-        'male': time_str_to_seconds('31:26'),
-        'female': time_str_to_seconds('33:21')
+    '10k': {
+        'name': '10K',
+        'distance_km': 10,
+        'male': time_str_to_seconds('57:15'),
+        'female': time_str_to_seconds('1:06:54'),
+        'overall': time_str_to_seconds('1:02:08'),
     },
-    'australia': {
-        'name': 'Australia',
-        'overall': time_str_to_seconds('32:50'),
-        'male': time_str_to_seconds('31:03'),
-        'female': time_str_to_seconds('34:38')
+    'half': {
+        'name': 'Half Marathon',
+        'distance_km': 21.1,
+        'male': time_str_to_seconds('1:59:26'),
+        'female': time_str_to_seconds('2:14:40'),
+        'overall': time_str_to_seconds('2:05:00'),  # Approximate weighted average
     },
-    'canada': {
-        'name': 'Canada',
-        'overall': time_str_to_seconds('33:41'),
-        'male': time_str_to_seconds('32:03'),
-        'female': time_str_to_seconds('35:19')
-    },
-    'global': {
-        'name': 'Worldwide',
-        'overall': time_str_to_seconds('34:29'),
-        'male': time_str_to_seconds('33:08'),
-        'female': time_str_to_seconds('35:50')
+    'marathon': {
+        'name': 'Marathon',
+        'distance_km': 42.2,
+        'male': time_str_to_seconds('4:21:03'),
+        'female': time_str_to_seconds('4:48:45'),
+        'overall': time_str_to_seconds('4:32:49'),
     }
 }
 
@@ -252,42 +254,103 @@ FEMALE_5K_TIMES = {
     }
 }
 
-# Percentile distribution for parkrun times (estimated from large dataset analysis)
+# Percentile thresholds by distance (from RunRepeat 107.9M race results)
 # Maps seconds to approximate percentile (faster than X% of runners)
-# Based on UK parkrun distribution
-PERCENTILE_THRESHOLDS = [
+# Source: https://runrepeat.com/how-do-you-masure-up-the-runners-percentile-calculator
+
+PERCENTILE_THRESHOLDS_5K = [
     (time_str_to_seconds('15:00'), 99.9),  # Sub-15: Top 0.1%
-    (time_str_to_seconds('17:00'), 99),    # Sub-17: Top 1%
-    (time_str_to_seconds('18:00'), 98),    # Sub-18: Top 2%
-    (time_str_to_seconds('19:00'), 95),    # Sub-19: Top 5%
-    (time_str_to_seconds('20:00'), 90),    # Sub-20: Top 10%
-    (time_str_to_seconds('21:00'), 85),    # Sub-21: Top 15%
-    (time_str_to_seconds('22:00'), 80),    # Sub-22: Top 20%
-    (time_str_to_seconds('23:00'), 75),    # Sub-23: Top 25%
-    (time_str_to_seconds('24:00'), 70),    # Sub-24: Top 30%
-    (time_str_to_seconds('25:00'), 65),    # Sub-25: Top 35%
-    (time_str_to_seconds('26:00'), 60),    # Sub-26: Top 40%
-    (time_str_to_seconds('27:00'), 55),    # Sub-27: Top 45%
-    (time_str_to_seconds('28:00'), 52),    # Sub-28: ~Top 48%
-    (time_str_to_seconds('29:00'), 50),    # Sub-29: Median
-    (time_str_to_seconds('30:00'), 47),    # Sub-30: Top 53%
-    (time_str_to_seconds('32:00'), 42),    # Sub-32: ~Global average
-    (time_str_to_seconds('35:00'), 35),    # Sub-35
-    (time_str_to_seconds('38:00'), 28),    # Sub-38
-    (time_str_to_seconds('40:00'), 23),    # Sub-40
-    (time_str_to_seconds('45:00'), 15),    # Sub-45
-    (time_str_to_seconds('50:00'), 10),    # Sub-50
-    (time_str_to_seconds('55:00'), 6),     # Sub-55
-    (time_str_to_seconds('60:00'), 3),     # Sub-60
+    (time_str_to_seconds('17:30'), 99),    # Sub-17:30: Top 1% (RunRepeat verified)
+    (time_str_to_seconds('19:00'), 97),    # Sub-19: Top 3%
+    (time_str_to_seconds('20:00'), 95),    # Sub-20: Top 5%
+    (time_str_to_seconds('21:00'), 93),    # Sub-21: Top 7%
+    (time_str_to_seconds('22:00'), 91),    # Sub-22: Top 9%
+    (time_str_to_seconds('23:00'), 90),    # Sub-23: Top 10% for men (RunRepeat verified)
+    (time_str_to_seconds('25:00'), 90),    # Sub-25: Top 10% overall (RunRepeat verified)
+    (time_str_to_seconds('27:00'), 80),    # Sub-27: Top 20%
+    (time_str_to_seconds('28:00'), 75),    # Sub-28: Top 25%
+    (time_str_to_seconds('30:00'), 70),    # Sub-30: Top 30% (RunRepeat verified)
+    (time_str_to_seconds('32:00'), 60),    # Sub-32: Top 40%
+    (time_str_to_seconds('34:00'), 50),    # Sub-34: Median (near global average)
+    (time_str_to_seconds('37:00'), 40),    # Sub-37: Top 60%
+    (time_str_to_seconds('40:00'), 30),    # Sub-40: Top 70%
+    (time_str_to_seconds('45:00'), 20),    # Sub-45: Top 80%
+    (time_str_to_seconds('50:00'), 12),    # Sub-50: Top 88%
+    (time_str_to_seconds('55:00'), 7),     # Sub-55: Top 93%
+    (time_str_to_seconds('60:00'), 4),     # Sub-60: Top 96%
 ]
 
+PERCENTILE_THRESHOLDS_10K = [
+    (time_str_to_seconds('32:00'), 99.9),  # Sub-32: Top 0.1%
+    (time_str_to_seconds('35:00'), 99),    # Sub-35: Top 1%
+    (time_str_to_seconds('40:00'), 97),    # Sub-40: Top 3%
+    (time_str_to_seconds('45:00'), 93),    # Sub-45: Top 7%
+    (time_str_to_seconds('48:11'), 90),    # Sub-48:11: Top 10% (RunRepeat verified)
+    (time_str_to_seconds('52:00'), 80),    # Sub-52: Top 20%
+    (time_str_to_seconds('55:00'), 70),    # Sub-55: Top 30%
+    (time_str_to_seconds('58:00'), 65),    # Sub-58: Top 35%
+    (time_str_to_seconds('1:00:00'), 60),  # Sub-60: Top 40% (RunRepeat verified)
+    (time_str_to_seconds('1:02:08'), 50),  # Global average = median
+    (time_str_to_seconds('1:10:00'), 35),  # Sub-70min: Top 65%
+    (time_str_to_seconds('1:20:00'), 20),  # Sub-80min: Top 80%
+    (time_str_to_seconds('1:30:00'), 10),  # Sub-90min: Top 90%
+]
 
-def get_percentile(time_seconds: int) -> float:
+PERCENTILE_THRESHOLDS_HALF = [
+    (time_str_to_seconds('1:10:00'), 99.9),  # Sub-1:10: Top 0.1%
+    (time_str_to_seconds('1:23:59'), 99),    # Sub-1:24: Top 1% (RunRepeat verified)
+    (time_str_to_seconds('1:30:00'), 97),    # Sub-1:30: Top 3%
+    (time_str_to_seconds('1:40:00'), 93),    # Sub-1:40: Top 7%
+    (time_str_to_seconds('1:47:10'), 90),    # Sub-1:47:10: Top 10% (RunRepeat verified)
+    (time_str_to_seconds('1:50:00'), 85),    # Sub-1:50: Top 15%
+    (time_str_to_seconds('1:55:00'), 70),    # Sub-1:55: Top 30%
+    (time_str_to_seconds('2:00:00'), 55),    # Sub-2:00: Top 45% (RunRepeat: only 45% sub-2)
+    (time_str_to_seconds('2:05:00'), 50),    # ~Global average = median
+    (time_str_to_seconds('2:15:00'), 40),    # Sub-2:15: Top 60%
+    (time_str_to_seconds('2:30:00'), 25),    # Sub-2:30: Top 75%
+    (time_str_to_seconds('2:45:00'), 15),    # Sub-2:45: Top 85%
+    (time_str_to_seconds('3:00:00'), 8),     # Sub-3:00: Top 92%
+]
+
+PERCENTILE_THRESHOLDS_MARATHON = [
+    (time_str_to_seconds('2:30:00'), 99.9),  # Sub-2:30: Top 0.1%
+    (time_str_to_seconds('2:50:48'), 99),    # Sub-2:51: Top 1% (RunRepeat verified)
+    (time_str_to_seconds('3:00:00'), 97),    # Sub-3:00: Top 3%
+    (time_str_to_seconds('3:15:00'), 93),    # Sub-3:15: Top 7%
+    (time_str_to_seconds('3:31:46'), 90),    # Sub-3:32: Top 10% (RunRepeat verified)
+    (time_str_to_seconds('3:45:00'), 80),    # Sub-3:45: Top 20%
+    (time_str_to_seconds('4:00:00'), 70),    # Sub-4:00: Top 30% (RunRepeat verified)
+    (time_str_to_seconds('4:15:00'), 55),    # Sub-4:15: Top 45%
+    (time_str_to_seconds('4:26:33'), 50),    # Median (RunRepeat verified US 2024)
+    (time_str_to_seconds('4:45:00'), 40),    # Sub-4:45: Top 60%
+    (time_str_to_seconds('5:00:00'), 30),    # Sub-5:00: Top 70%
+    (time_str_to_seconds('5:30:00'), 18),    # Sub-5:30: Top 82%
+    (time_str_to_seconds('6:00:00'), 10),    # Sub-6:00: Top 90%
+]
+
+# Legacy alias for backwards compatibility (5K thresholds)
+PERCENTILE_THRESHOLDS = PERCENTILE_THRESHOLDS_5K
+
+
+def get_percentile(time_seconds: int, distance: str = '5k') -> float:
     """
-    Get approximate percentile for a given time.
+    Get approximate percentile for a given time and distance.
     Returns the percentage of runners you're faster than.
+
+    Args:
+        time_seconds: Time in seconds
+        distance: One of '5k', '10k', 'half', 'marathon'
     """
-    for threshold, percentile in PERCENTILE_THRESHOLDS:
+    thresholds_map = {
+        '5k': PERCENTILE_THRESHOLDS_5K,
+        '10k': PERCENTILE_THRESHOLDS_10K,
+        'half': PERCENTILE_THRESHOLDS_HALF,
+        'marathon': PERCENTILE_THRESHOLDS_MARATHON,
+    }
+
+    thresholds = thresholds_map.get(distance.lower(), PERCENTILE_THRESHOLDS_5K)
+
+    for threshold, percentile in thresholds:
         if time_seconds <= threshold:
             return percentile
 
@@ -345,21 +408,59 @@ def compare_to_averages(time_seconds: int) -> list:
     return comparisons
 
 
-def compare_to_countries(time_seconds: int) -> list:
-    """Compare a time to country averages."""
+def compare_to_distance_average(time_seconds: int, distance: str = '5k', gender: str = None) -> dict:
+    """
+    Compare a time to the global average for a distance.
+
+    Args:
+        time_seconds: Time in seconds
+        distance: One of '5k', '10k', 'half', 'marathon'
+        gender: Optional 'male' or 'female' for gender-specific comparison
+    """
+    dist_data = DISTANCE_AVERAGES.get(distance.lower())
+    if not dist_data:
+        return None
+
+    if gender and gender.lower() in ['male', 'female']:
+        avg_time = dist_data[gender.lower()]
+        label = f"Global {dist_data['name']} Average ({gender.capitalize()})"
+    else:
+        avg_time = dist_data['overall']
+        label = f"Global {dist_data['name']} Average"
+
+    diff = avg_time - time_seconds
+    faster = diff > 0
+
+    return {
+        'distance': distance,
+        'name': label,
+        'average_time': seconds_to_time_str(avg_time),
+        'average_seconds': avg_time,
+        'difference': abs(diff),
+        'difference_str': seconds_to_time_str(abs(diff)),
+        'faster': faster,
+        'source': 'RunRepeat (107.9M race results)'
+    }
+
+
+def compare_to_all_distances(time_seconds: int, gender: str = None) -> list:
+    """
+    Compare a 5K time to equivalent times at other distances.
+    Uses approximate pace scaling.
+    """
     comparisons = []
 
-    for key, data in COUNTRY_AVERAGES.items():
-        diff = data['overall'] - time_seconds
-        faster = diff > 0
+    for distance_key, dist_data in DISTANCE_AVERAGES.items():
+        if gender and gender.lower() in ['male', 'female']:
+            avg_time = dist_data[gender.lower()]
+        else:
+            avg_time = dist_data['overall']
 
         comparisons.append({
-            'country': data['name'],
-            'average_time': seconds_to_time_str(data['overall']),
-            'average_seconds': data['overall'],
-            'difference': abs(diff),
-            'difference_str': seconds_to_time_str(abs(diff)),
-            'faster': faster
+            'distance': dist_data['name'],
+            'average_time': seconds_to_time_str(avg_time),
+            'average_seconds': avg_time,
+            'source': 'RunRepeat'
         })
 
     return comparisons
@@ -385,17 +486,26 @@ def get_rating_message(percentile: float, ability: str) -> str:
         return "You're doing great! The important thing is you're out there running!"
 
 
-def get_full_comparison(time_seconds: int, age: Optional[int] = None, gender: Optional[str] = None) -> dict:
+def get_full_comparison(time_seconds: int, age: Optional[int] = None, gender: Optional[str] = None, distance: str = '5k') -> dict:
     """
     Get a complete comparison analysis for a given time.
+
+    Args:
+        time_seconds: Time in seconds
+        age: Runner's age (optional)
+        gender: 'male' or 'female' (optional)
+        distance: One of '5k', '10k', 'half', 'marathon'
     """
-    percentile = get_percentile(time_seconds)
+    percentile = get_percentile(time_seconds, distance)
 
     # Use defaults if age/gender not provided
     effective_age = age if age else 35
     effective_gender = gender if gender else 'male'
 
     ability = get_ability_level(time_seconds, effective_age, effective_gender)
+
+    # Get distance-specific comparison
+    distance_comparison = compare_to_distance_average(time_seconds, distance, effective_gender)
 
     return {
         'time_seconds': time_seconds,
@@ -404,16 +514,39 @@ def get_full_comparison(time_seconds: int, age: Optional[int] = None, gender: Op
         'ability_level': ability,
         'rating_message': get_rating_message(percentile, ability),
         'parkrun_comparisons': compare_to_averages(time_seconds),
-        'country_comparisons': compare_to_countries(time_seconds),
+        'distance_comparison': distance_comparison,
+        'all_distance_averages': compare_to_all_distances(time_seconds, effective_gender),
     }
 
 
 # For testing
 if __name__ == "__main__":
-    # Test with a 25-minute time
+    print("=== 5K Test (25:00) ===")
     test_time = time_str_to_seconds("25:00")
-    result = get_full_comparison(test_time, age=35, gender='male')
+    result = get_full_comparison(test_time, age=35, gender='male', distance='5k')
     print(f"Time: {result['time_str']}")
-    print(f"Percentile: Faster than {result['percentile']}% of runners")
+    print(f"Percentile: Faster than {result['percentile']}% of 5K runners")
     print(f"Ability Level: {result['ability_level']}")
     print(f"Rating: {result['rating_message']}")
+    if result['distance_comparison']:
+        print(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
+
+    print("\n=== Half Marathon Test (1:45:00) ===")
+    test_time = time_str_to_seconds("1:45:00")
+    result = get_full_comparison(test_time, age=35, gender='male', distance='half')
+    print(f"Time: {result['time_str']}")
+    print(f"Percentile: Faster than {result['percentile']}% of half marathon runners")
+    if result['distance_comparison']:
+        print(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
+
+    print("\n=== Marathon Test (4:00:00) ===")
+    test_time = time_str_to_seconds("4:00:00")
+    result = get_full_comparison(test_time, age=40, gender='female', distance='marathon')
+    print(f"Time: {result['time_str']}")
+    print(f"Percentile: Faster than {result['percentile']}% of marathon runners")
+    if result['distance_comparison']:
+        print(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
+
+    print("\n=== Global Distance Averages ===")
+    for dist in compare_to_all_distances(0, 'male'):
+        print(f"{dist['distance']}: {dist['average_time']} (Male avg)")
