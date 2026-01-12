@@ -6,10 +6,13 @@ Also supports Power of 10 for multi-distance analysis.
 
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+
+# Cache duration - don't re-scrape if data is newer than this
+CACHE_HOURS = int(os.environ.get('CACHE_HOURS', 24))
 
 from scraper import ParkrunScraper
 from po10_scraper import PowerOf10Scraper
@@ -106,15 +109,6 @@ def save_parkrun_athlete(athlete_id: str, results: dict):
             )
             db.session.add(athlete)
 
-        # Log the lookup
-        lookup = Lookup(
-            source='parkrun',
-            athlete_id=athlete_id,
-            athlete_name=results.get('name'),
-            ip_address=request.remote_addr
-        )
-        db.session.add(lookup)
-
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -157,26 +151,45 @@ def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None
             )
             db.session.add(athlete)
 
-        # Log the lookup
-        lookup = Lookup(
-            source='po10',
-            athlete_id=athlete_id,
-            athlete_name=results.get('name'),
-            ip_address=request.remote_addr
-        )
-        db.session.add(lookup)
-
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         print(f"Error saving PO10 athlete: {e}")
 
 
-def get_cached_parkrun_athlete(athlete_id: str) -> dict:
-    """Try to get parkrun athlete from database cache."""
+def log_lookup(source: str, athlete_id: str, athlete_name: str = None):
+    """Log a lookup to the database for analytics (called on every successful lookup)."""
+    try:
+        lookup = Lookup(
+            source=source,
+            athlete_id=athlete_id,
+            athlete_name=athlete_name,
+            ip_address=request.remote_addr
+        )
+        db.session.add(lookup)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error logging lookup: {e}")
+
+
+def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = False) -> dict:
+    """
+    Try to get parkrun athlete from database cache.
+
+    Args:
+        athlete_id: The parkrun athlete ID
+        fresh_only: If True, only return if cache is less than CACHE_HOURS old
+    """
     try:
         athlete = ParkrunAthlete.query.filter_by(athlete_id=athlete_id).first()
         if athlete:
+            # Check if cache is fresh enough
+            if fresh_only and athlete.updated_at:
+                cache_age = datetime.utcnow() - athlete.updated_at
+                if cache_age > timedelta(hours=CACHE_HOURS):
+                    return None  # Cache is stale
+
             return {
                 'name': athlete.name,
                 'athlete_id': athlete.athlete_id,
@@ -211,6 +224,46 @@ def get_cached_parkrun_athlete(athlete_id: str) -> dict:
     return None
 
 
+def get_cached_po10_athlete(athlete_id: str, fresh_only: bool = False) -> dict:
+    """
+    Try to get Power of 10 athlete from database cache.
+
+    Args:
+        athlete_id: The Power of 10 athlete ID
+        fresh_only: If True, only return if cache is less than CACHE_HOURS old
+    """
+    try:
+        athlete = PowerOf10Athlete.query.filter_by(athlete_id=athlete_id).first()
+        if athlete:
+            # Check if cache is fresh enough
+            if fresh_only and athlete.updated_at:
+                cache_age = datetime.utcnow() - athlete.updated_at
+                if cache_age > timedelta(hours=CACHE_HOURS):
+                    return None  # Cache is stale
+
+            # Parse PBs from JSON
+            pbs = json.loads(athlete.pbs_json) if athlete.pbs_json else {}
+
+            return {
+                'name': athlete.name,
+                'athlete_id': athlete.athlete_id,
+                'club': athlete.club,
+                'gender': athlete.gender,
+                'age_group': athlete.age_group,
+                'pbs': pbs,
+                'overall': {
+                    'percentile': athlete.overall_percentile,
+                    'age_grade': athlete.overall_age_grade,
+                    'ability_level': athlete.overall_ability_level,
+                } if athlete.overall_percentile else None,
+                'from_cache': True,
+                'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
+            }
+    except Exception as e:
+        print(f"Error getting cached PO10 athlete: {e}")
+    return None
+
+
 @app.route('/', methods=['GET', 'POST'])
 @limiter.limit("10 per minute", methods=["POST"])  # Stricter limit for parkrun (uses ScraperAPI)
 @limiter.limit("30 per hour", methods=["POST"])
@@ -229,22 +282,33 @@ def index():
         elif not athlete_id.isdigit():
             error = "Parkrun ID should be a number (e.g., 123456)"
         else:
-            # Fetch athlete data
-            results = parkrun_scraper.get_athlete_results(athlete_id)
+            # First, check for fresh cached data to avoid unnecessary scraping
+            cached = get_cached_parkrun_athlete(athlete_id, fresh_only=True)
+            if cached:
+                results = cached
+                from_cache = True
+            else:
+                # No fresh cache - need to scrape
+                results = parkrun_scraper.get_athlete_results(athlete_id)
 
-            if results.get('error'):
-                # Try to get from cache if live scrape fails
-                cached = get_cached_parkrun_athlete(athlete_id)
-                if cached:
-                    results = cached
-                    from_cache = True
-                else:
-                    error = results['error'] + " (No cached data available)"
+                if results.get('error'):
+                    # Scrape failed - try stale cache as fallback
+                    stale_cached = get_cached_parkrun_athlete(athlete_id, fresh_only=False)
+                    if stale_cached:
+                        results = stale_cached
+                        from_cache = True
+                    else:
+                        error = results['error'] + " (No cached data available)"
+                        results = None
+                elif results.get('total_runs', 0) == 0:
+                    error = f"No parkrun results found for athlete ID {athlete_id}. Please check the ID is correct."
                     results = None
-            elif results.get('total_runs', 0) == 0:
-                error = f"No parkrun results found for athlete ID {athlete_id}. Please check the ID is correct."
-                results = None
-            elif results.get('stats') and results['stats'].get('average_seconds'):
+                else:
+                    # Save fresh data to database
+                    save_parkrun_athlete(athlete_id, results)
+
+            # Generate comparisons if we have valid results
+            if results and results.get('stats') and results['stats'].get('average_seconds'):
                 stats = results['stats']
 
                 # Get comparison data based on TYPICAL time (excluding outliers)
@@ -268,8 +332,8 @@ def index():
                     stats['average_seconds']
                 )
 
-                # Save to database
-                save_parkrun_athlete(athlete_id, results)
+                # Log every successful lookup
+                log_lookup('parkrun', athlete_id, results.get('name'))
 
     return render_template(
         'index.html',
@@ -287,6 +351,7 @@ def power_of_10():
     results = None
     error = None
     distance_comparisons = None
+    from_cache = False
 
     if request.method == 'POST':
         athlete_id = request.form.get('athlete_id', '').strip()
@@ -296,15 +361,30 @@ def power_of_10():
         elif not athlete_id.isdigit():
             error = "Athlete ID should be a number"
         else:
-            results = po10_scraper.get_athlete_by_id(athlete_id)
-
-            if results.get('error'):
-                error = results['error']
-                results = None
-            elif not results.get('pbs'):
-                error = f"No PBs found for athlete ID {athlete_id}"
-                results = None
+            # First, check for fresh cached data to avoid unnecessary scraping
+            cached = get_cached_po10_athlete(athlete_id, fresh_only=True)
+            if cached and cached.get('pbs'):
+                results = cached
+                from_cache = True
             else:
+                # No fresh cache - need to scrape
+                results = po10_scraper.get_athlete_by_id(athlete_id)
+
+                if results.get('error'):
+                    # Scrape failed - try stale cache as fallback
+                    stale_cached = get_cached_po10_athlete(athlete_id, fresh_only=False)
+                    if stale_cached and stale_cached.get('pbs'):
+                        results = stale_cached
+                        from_cache = True
+                    else:
+                        error = results['error']
+                        results = None
+                elif not results.get('pbs'):
+                    error = f"No PBs found for athlete ID {athlete_id}"
+                    results = None
+
+            # Generate comparisons if we have valid results with PBs
+            if results and results.get('pbs'):
                 # Get age for comparison (try to parse from age_group like V55)
                 age = 35  # Default
                 age_group = results.get('age_group', '')
@@ -383,8 +463,12 @@ def power_of_10():
                         'age_grade_category_name': overall_ag_cat_name,
                     }
 
-                    # Save to database
-                    save_po10_athlete(athlete_id, results, results['overall'])
+                    # Save to database (only if freshly scraped)
+                    if not from_cache:
+                        save_po10_athlete(athlete_id, results, results['overall'])
+
+                    # Log every successful lookup
+                    log_lookup('po10', athlete_id, results.get('name'))
 
     return render_template(
         'power_of_10.html',
