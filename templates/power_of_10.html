@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How Fast Am I? - Multi-Distance Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>How Fast Am I?</h1>
+            <p class="subtitle">Multi-Distance Analysis via Power of 10</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <a href="/" class="nav-tab">Parkrun</a>
+            <a href="/power-of-10" class="nav-tab active">Power of 10</a>
+        </nav>
+
+        <main>
+            <form method="POST" class="search-form">
+                <div class="form-group">
+                    <label for="athlete_id">Enter your Power of 10 Athlete ID:</label>
+                    <div class="input-row">
+                        <input
+                            type="text"
+                            id="athlete_id"
+                            name="athlete_id"
+                            placeholder="e.g., 434569"
+                            pattern="[0-9]+"
+                            required
+                            {% if results %}value="{{ results.athlete_id }}"{% endif %}
+                        >
+                        <button type="submit">Analyse</button>
+                    </div>
+                    <p class="hint">Find your ID on your Power of 10 profile URL (athleteid=XXXXXX)</p>
+                </div>
+            </form>
+
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            {% if results and distance_comparisons %}
+            <div class="results-section">
+                <div class="athlete-info">
+                    <h2>{{ results.name }}</h2>
+                    {% if results.club %}
+                    <p class="club-info">{{ results.club }} | {{ results.age_group }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Main Rating Card - Overall Performance -->
+                {% if results.overall %}
+                <div class="rating-card">
+                    <div class="rating-header">Your Overall Performance</div>
+                    <div class="percentile">
+                        <span class="big-number">{{ results.overall.percentile }}%</span>
+                        <span class="label">faster than other runners</span>
+                    </div>
+                    <p class="rating-message">{{ results.overall.rating_message }}</p>
+                    <p class="ability-badge {{ results.overall.ability_level }}">{{ results.overall.ability_level|capitalize }} Level</p>
+                    {% if results.overall.age_grade %}
+                    <div class="age-grade-banner">
+                        <span class="ag-value">{{ results.overall.age_grade }}%</span>
+                        <span class="ag-label">Age Grade ({{ results.overall.age_grade_category_name }})</span>
+                    </div>
+                    {% endif %}
+                    <p class="rating-note">Based on {{ results.overall.distance_count }} distance{{ 's' if results.overall.distance_count > 1 else '' }} from Power of 10</p>
+                </div>
+                {% endif %}
+
+                <!-- Distance Cards -->
+                <div class="distance-overview">
+                    <h3>Your Personal Bests</h3>
+                    <div class="distance-grid">
+                        {% for distance, data in distance_comparisons.items() %}
+                        <div class="distance-card">
+                            <div class="distance-header">{{ data.distance_name }}</div>
+                            <div class="distance-time">{{ data.time_str }}</div>
+                            <div class="distance-percentile">
+                                <span class="perc-badge">Top {{ (100 - data.percentile)|round(1) }}%</span>
+                            </div>
+                            {% if data.age_grade %}
+                            <div class="distance-age-grade">
+                                <span class="ag-badge {{ data.age_grade_category }}">{{ data.age_grade }}% AG</span>
+                            </div>
+                            {% endif %}
+                            <div class="distance-level ability-badge {{ data.ability_level }}">
+                                {{ data.ability_level|capitalize }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Detailed Analysis for Each Distance -->
+                {% for distance, data in distance_comparisons.items() %}
+                <div class="distance-detail">
+                    <div class="detail-header">
+                        <h3>{{ data.distance_name }} Analysis</h3>
+                        <span class="detail-time">{{ data.time_str }}</span>
+                    </div>
+
+                    <div class="detail-content">
+                        <div class="detail-rating">
+                            <div class="rating-percentile">
+                                <span class="big-number">{{ data.percentile }}%</span>
+                                <span class="label">faster than other runners</span>
+                            </div>
+                            <p class="rating-message">{{ data.rating_message }}</p>
+                            {% if data.age_grade %}
+                            <div class="age-grade-detail">
+                                <span class="ag-big">{{ data.age_grade }}%</span>
+                                <span class="ag-info">Age Grade ({{ data.age_grade_category_name }})</span>
+                                {% if data.age_graded_time %}
+                                <span class="ag-time">Age-graded time: {{ data.age_graded_time }}</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="detail-comparisons">
+                            <h4>How You Compare</h4>
+                            <table class="comparison-table">
+                                <thead>
+                                    <tr>
+                                        <th>Benchmark</th>
+                                        <th>Average</th>
+                                        <th>Difference</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for comp in data.comparisons %}
+                                    <tr>
+                                        <td>{{ comp.name }}</td>
+                                        <td>{{ comp.benchmark_time }}</td>
+                                        <td>
+                                            {% if comp.faster %}
+                                            <span class="faster-badge">{{ comp.difference_str }} faster</span>
+                                            {% else %}
+                                            <span class="slower-badge">{{ comp.difference_str }} slower</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                <!-- Summary -->
+                <div class="summary-section">
+                    <h3>Overall Summary</h3>
+                    <div class="summary-content">
+                        <p>Based on your PBs across {{ distance_comparisons|length }} distances, you are performing at an
+                        {% set levels = distance_comparisons.values()|map(attribute='ability_level')|list %}
+                        {% if 'elite' in levels %}
+                        <strong>elite</strong>
+                        {% elif 'advanced' in levels %}
+                        <strong>advanced</strong>
+                        {% elif 'intermediate' in levels %}
+                        <strong>intermediate</strong>
+                        {% else %}
+                        <strong>developing</strong>
+                        {% endif %}
+                        level overall.</p>
+
+                        {% set avg_percentile = (distance_comparisons.values()|map(attribute='percentile')|list|sum) / (distance_comparisons|length) %}
+                        <p>On average, you're faster than <strong>{{ avg_percentile|round(1) }}%</strong> of runners across all distances.</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </main>
+
+        <footer>
+            <p>Data sourced from <a href="https://www.thepowerof10.info" target="_blank">Power of 10</a></p>
+            <p>Comparison data from <a href="https://runninglevel.com" target="_blank">runninglevel.com</a></p>
+        </footer>
+    </div>
+</body>
+</html>

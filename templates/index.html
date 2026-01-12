@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How Fast Am I? - Parkrun Comparison Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>How Fast Am I?</h1>
+            <p class="subtitle">Compare your parkrun times to UK and worldwide averages</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <a href="/" class="nav-tab active">Parkrun</a>
+            <a href="/power-of-10" class="nav-tab">Power of 10</a>
+        </nav>
+
+        <main>
+            <form method="POST" class="search-form">
+                <div class="form-group">
+                    <label for="athlete_id">Enter your Parkrun ID:</label>
+                    <div class="input-row">
+                        <input
+                            type="text"
+                            id="athlete_id"
+                            name="athlete_id"
+                            placeholder="e.g., 123456"
+                            pattern="[0-9]+"
+                            required
+                            {% if results %}value="{{ results.athlete_id }}"{% endif %}
+                        >
+                        <button type="submit">Analyse</button>
+                    </div>
+                    <p class="hint">Find your ID on your parkrun athlete page URL</p>
+                </div>
+            </form>
+
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            {% if results and comparison %}
+            <div class="results-section">
+                <div class="athlete-info">
+                    <h2>{{ results.name }}</h2>
+                    <p class="total-runs">{{ results.total_runs }} parkruns completed</p>
+                </div>
+
+                <!-- Main Rating Card - Based on Typical Time -->
+                <div class="rating-card">
+                    <div class="rating-header">Your Typical Performance</div>
+                    <div class="percentile">
+                        <span class="big-number">{{ comparison.percentile }}%</span>
+                        <span class="label">faster than other runners</span>
+                    </div>
+                    <p class="rating-message">{{ comparison.rating_message }}</p>
+                    <p class="ability-badge {{ comparison.ability_level }}">{{ comparison.ability_level|capitalize }} Level</p>
+                    {% if results.stats.recent_avg_age_grade %}
+                    <div class="age-grade-banner">
+                        <span class="ag-value">{{ results.stats.recent_avg_age_grade }}%</span>
+                        <span class="ag-label">Age Grade (Recent Form)</span>
+                    </div>
+                    {% elif results.stats.avg_age_grade %}
+                    <div class="age-grade-banner">
+                        <span class="ag-value">{{ results.stats.avg_age_grade }}%</span>
+                        <span class="ag-label">Average Age Grade</span>
+                    </div>
+                    {% endif %}
+                    <p class="rating-note">Based on typical time of {{ results.stats.typical_avg_time }} (excluding outliers)</p>
+                </div>
+
+                <!-- Trend Analysis -->
+                {% if results.stats.trend %}
+                <div class="trend-card {{ results.stats.trend }}">
+                    <h3>Trend Analysis</h3>
+                    <div class="trend-indicator">
+                        {% if results.stats.trend == 'improving' %}
+                        <span class="trend-icon">&#8593;</span>
+                        {% elif results.stats.trend == 'declining' %}
+                        <span class="trend-icon">&#8595;</span>
+                        {% else %}
+                        <span class="trend-icon">&#8596;</span>
+                        {% endif %}
+                        <span class="trend-text">{{ results.stats.trend_message }}</span>
+                    </div>
+                    {% if results.stats.recent_avg_time and results.stats.older_avg_time %}
+                    <div class="trend-comparison">
+                        <div class="trend-stat">
+                            <span class="trend-label">Recent Form (last 20)</span>
+                            <span class="trend-value">{{ results.stats.recent_avg_time }}</span>
+                        </div>
+                        <div class="trend-stat">
+                            <span class="trend-label">Historical Average</span>
+                            <span class="trend-value">{{ results.stats.older_avg_time }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Multi-Percentile Comparison -->
+                <div class="percentile-comparison">
+                    <h3>How You Rank</h3>
+                    <div class="percentile-grid">
+                        {% if comparison.best_comparison %}
+                        <div class="percentile-card pb">
+                            <span class="perc-label">Personal Best</span>
+                            <span class="perc-time">{{ results.stats.best_time }}</span>
+                            <span class="perc-value">Top {{ (100 - comparison.best_comparison.percentile)|round(1) }}%</span>
+                            <span class="perc-level ability-badge {{ comparison.best_comparison.ability_level }}">{{ comparison.best_comparison.ability_level|capitalize }}</span>
+                        </div>
+                        {% endif %}
+                        {% if comparison.current_form_comparison %}
+                        <div class="percentile-card current">
+                            <span class="perc-label">Current Form</span>
+                            <span class="perc-time">{{ results.stats.recent_avg_time }}</span>
+                            <span class="perc-value">Top {{ (100 - comparison.current_form_comparison.percentile)|round(1) }}%</span>
+                            <span class="perc-level ability-badge {{ comparison.current_form_comparison.ability_level }}">{{ comparison.current_form_comparison.ability_level|capitalize }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="percentile-card typical">
+                            <span class="perc-label">Typical Time</span>
+                            <span class="perc-time">{{ results.stats.typical_avg_time }}</span>
+                            <span class="perc-value">Top {{ (100 - comparison.percentile)|round(1) }}%</span>
+                            <span class="perc-level ability-badge {{ comparison.ability_level }}">{{ comparison.ability_level|capitalize }}</span>
+                        </div>
+                        {% if comparison.alltime_comparison %}
+                        <div class="percentile-card alltime">
+                            <span class="perc-label">All-Time Average</span>
+                            <span class="perc-time">{{ results.stats.average_time }}</span>
+                            <span class="perc-value">Top {{ (100 - comparison.alltime_comparison.percentile)|round(1) }}%</span>
+                            <span class="perc-level ability-badge {{ comparison.alltime_comparison.ability_level }}">{{ comparison.alltime_comparison.ability_level|capitalize }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- PB Context -->
+                {% if results.stats.pb_date %}
+                <div class="pb-context">
+                    <h3>Personal Best Context</h3>
+                    <div class="pb-details">
+                        <div class="pb-main">
+                            <span class="pb-time-large">{{ results.stats.best_time }}</span>
+                            <span class="pb-ago">{{ results.stats.pb_age }}</span>
+                        </div>
+                        <div class="pb-info">
+                            <p><strong>Event:</strong> {{ results.stats.pb_event }}</p>
+                            <p><strong>Date:</strong> {{ results.stats.pb_date }}</p>
+                            {% if results.stats.pb_age and 'year' in results.stats.pb_age %}
+                            <p class="pb-warning">Your PB was set a while ago - your current form may be different!</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Outlier Detection -->
+                {% if results.stats.outlier_count > 0 %}
+                <div class="outlier-info">
+                    <h3>Run Pattern Analysis</h3>
+                    <div class="outlier-content">
+                        <div class="outlier-stat">
+                            <span class="outlier-number">{{ results.stats.outlier_count }}</span>
+                            <span class="outlier-label">Outlier runs detected</span>
+                        </div>
+                        <div class="outlier-explanation">
+                            <p>We found <strong>{{ results.stats.outlier_count }}</strong> runs slower than {{ results.stats.outlier_threshold_time }}
+                               (1.5x your median time). These are likely walks, runs with children, or other non-typical efforts.</p>
+                            <p>Your <strong>typical</strong> stats exclude these outliers for a more accurate picture of your running ability.</p>
+                        </div>
+                        <div class="outlier-comparison">
+                            <div class="outlier-compare-item">
+                                <span class="compare-label">With outliers</span>
+                                <span class="compare-value">{{ results.stats.average_time }}</span>
+                            </div>
+                            <div class="outlier-compare-item highlight">
+                                <span class="compare-label">Typical (excl. outliers)</span>
+                                <span class="compare-value">{{ results.stats.typical_avg_time }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Stats Grid -->
+                <div class="stats-section">
+                    <h3>Your Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">Typical Average</span>
+                            <span class="stat-value">{{ results.stats.typical_avg_time }}</span>
+                            <span class="stat-note">Excluding outliers</span>
+                        </div>
+                        <div class="stat-card highlight">
+                            <span class="stat-label">Personal Best</span>
+                            <span class="stat-value">{{ results.stats.best_time }}</span>
+                            <span class="stat-note">{{ results.stats.pb_age }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Typical Median</span>
+                            <span class="stat-value">{{ results.stats.typical_median_time }}</span>
+                        </div>
+                        {% if results.stats.recent_avg_time %}
+                        <div class="stat-card">
+                            <span class="stat-label">Current Form</span>
+                            <span class="stat-value">{{ results.stats.recent_avg_time }}</span>
+                            <span class="stat-note">Last {{ results.stats.recent_run_count }} runs</span>
+                        </div>
+                        {% endif %}
+                        {% if results.stats.recent_avg_age_grade %}
+                        <div class="stat-card">
+                            <span class="stat-label">Recent Age Grade</span>
+                            <span class="stat-value">{{ results.stats.recent_avg_age_grade }}%</span>
+                        </div>
+                        {% endif %}
+                        <div class="stat-card">
+                            <span class="stat-label">Total Runs</span>
+                            <span class="stat-value">{{ results.stats.total_runs }}</span>
+                            <span class="stat-note">{{ results.stats.normal_run_count }} typical + {{ results.stats.outlier_count }} outliers</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparison Tables -->
+                <div class="comparison-section">
+                    <h3>How You Compare (Based on Typical Time)</h3>
+
+                    <div class="comparison-table-wrapper">
+                        <h4>vs Parkrun Averages</h4>
+                        <table class="comparison-table">
+                            <thead>
+                                <tr>
+                                    <th>Benchmark</th>
+                                    <th>Average</th>
+                                    <th>Difference</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for comp in comparison.parkrun_comparisons %}
+                                <tr class="{{ 'faster' if comp.faster else 'slower' }}">
+                                    <td>{{ comp.name }}</td>
+                                    <td>{{ comp.benchmark_time }}</td>
+                                    <td>
+                                        {% if comp.faster %}
+                                        <span class="faster-badge">{{ comp.difference_str }} faster</span>
+                                        {% else %}
+                                        <span class="slower-badge">{{ comp.difference_str }} slower</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="comparison-table-wrapper">
+                        <h4>vs Country 5K Averages</h4>
+                        <table class="comparison-table">
+                            <thead>
+                                <tr>
+                                    <th>Country</th>
+                                    <th>Average</th>
+                                    <th>Difference</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for comp in comparison.country_comparisons %}
+                                <tr class="{{ 'faster' if comp.faster else 'slower' }}">
+                                    <td>{{ comp.country }}</td>
+                                    <td>{{ comp.average_time }}</td>
+                                    <td>
+                                        {% if comp.faster %}
+                                        <span class="faster-badge">{{ comp.difference_str }} faster</span>
+                                        {% else %}
+                                        <span class="slower-badge">{{ comp.difference_str }} slower</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Recent Runs -->
+                <div class="recent-runs">
+                    <h3>Recent Runs</h3>
+                    <table class="runs-table">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Position</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for run in results.results[:10] %}
+                            <tr class="{{ 'pb-row' if run.pb else '' }}{{ ' outlier-row' if run.time_seconds > results.stats.typical_median_seconds * 1.5 else '' }}">
+                                <td>{{ run.event }}</td>
+                                <td>{{ run.run_date }}</td>
+                                <td>
+                                    {{ run.time }}
+                                    {% if run.pb %}<span class="pb-badge">PB</span>{% endif %}
+                                    {% if run.time_seconds > results.stats.typical_median_seconds * 1.5 %}<span class="outlier-badge">Outlier</span>{% endif %}
+                                </td>
+                                <td>{{ run.position }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% if results.results|length > 10 %}
+                    <p class="more-runs">Showing 10 of {{ results.total_runs }} runs</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </main>
+
+        <footer>
+            <p>Data sourced from <a href="https://www.parkrun.org.uk" target="_blank">parkrun.org.uk</a></p>
+            <p>Comparison data from parkrun statistics and <a href="https://runninglevel.com" target="_blank">runninglevel.com</a></p>
+        </footer>
+    </div>
+</body>
+</html>
