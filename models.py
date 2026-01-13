@@ -92,12 +92,47 @@ class PowerOf10Athlete(db.Model):
         return f'<PowerOf10Athlete {self.athlete_id}: {self.name}>'
 
 
+class AthlinksAthlete(db.Model):
+    """Stores Athlinks athlete data."""
+    __tablename__ = 'athlinks_athletes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    athlete_id = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(200))
+    total_races = db.Column(db.Integer)
+
+    # Total stats
+    total_distance_km = db.Column(db.Float)
+    total_distance_miles = db.Column(db.Float)
+
+    # PBs stored as JSON string (by distance: 5k, 10k, half, marathon)
+    pbs_json = db.Column(db.Text)
+
+    # Recent results stored as JSON
+    results_json = db.Column(db.Text)
+
+    # Overall stats
+    overall_percentile = db.Column(db.Float)
+    overall_ability_level = db.Column(db.String(20))
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Track lookups
+    lookup_count = db.Column(db.Integer, default=1)
+    last_lookup_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<AthlinksAthlete {self.athlete_id}: {self.name}>'
+
+
 class Lookup(db.Model):
     """Tracks all lookups for analytics."""
     __tablename__ = 'lookups'
 
     id = db.Column(db.Integer, primary_key=True)
-    source = db.Column(db.String(20), nullable=False)  # 'parkrun' or 'po10'
+    source = db.Column(db.String(20), nullable=False)  # 'parkrun', 'po10', or 'athlinks'
     athlete_id = db.Column(db.String(20), nullable=False, index=True)
     athlete_name = db.Column(db.String(200))
     lookup_at = db.Column(db.DateTime, default=datetime.utcnow)

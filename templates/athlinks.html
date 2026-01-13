@@ -3,39 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Fast Am I? - Multi-Distance Analysis</title>
+    <title>How Fast Am I? - Athlinks (USA)</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>How Fast Am I?</h1>
-            <p class="subtitle">Multi-Distance Analysis via Power of 10</p>
+            <p class="subtitle">Multi-Distance Analysis via Athlinks (USA)</p>
         </header>
 
         <nav class="nav-tabs">
             <a href="/" class="nav-tab">Parkrun</a>
-            <a href="/power-of-10" class="nav-tab active">Power of 10 (UK)</a>
-            <a href="/athlinks" class="nav-tab">Athlinks (USA)</a>
+            <a href="/power-of-10" class="nav-tab">Power of 10 (UK)</a>
+            <a href="/athlinks" class="nav-tab active">Athlinks (USA)</a>
         </nav>
 
         <main>
             <form method="POST" class="search-form">
                 <div class="form-group">
-                    <label for="athlete_id">Enter your Power of 10 Athlete ID:</label>
+                    <label for="athlete_id">Enter your Athlinks Athlete ID:</label>
                     <div class="input-row">
                         <input
                             type="text"
                             id="athlete_id"
                             name="athlete_id"
-                            placeholder="e.g., 434569"
+                            placeholder="e.g., 319145186"
                             pattern="[0-9]+"
                             required
                             {% if results %}value="{{ results.athlete_id }}"{% endif %}
                         >
                         <button type="submit">Analyse</button>
                     </div>
-                    <p class="hint">Find your ID on your Power of 10 profile URL (athleteid=XXXXXX)</p>
+                    <p class="hint">Find your ID in your Athlinks profile URL: athlinks.com/athletes/<strong>YOUR_ID</strong></p>
                 </div>
             </form>
 
@@ -49,8 +49,9 @@
             <div class="results-section">
                 <div class="athlete-info">
                     <h2>{{ results.name }}</h2>
-                    {% if results.club %}
-                    <p class="club-info">{{ results.club }} | {{ results.age_group }}</p>
+                    <p class="club-info">{{ results.total_races }} races completed</p>
+                    {% if results.stats and results.stats.total_distance_miles %}
+                    <p class="stats-summary">{{ results.stats.total_distance_miles }} miles raced</p>
                     {% endif %}
                 </div>
 
@@ -64,17 +65,12 @@
                     </div>
                     <p class="rating-message">{{ results.overall.rating_message }}</p>
                     <p class="ability-badge {{ results.overall.ability_level }}">{{ results.overall.ability_level|capitalize }} Level</p>
-                    {% if results.overall.age_grade %}
-                    <div class="age-grade-banner">
-                        <span class="ag-value">{{ results.overall.age_grade }}%</span>
-                        <span class="ag-label">Age Grade ({{ results.overall.age_grade_category_name }})</span>
-                    </div>
-                    {% endif %}
-                    <p class="rating-note">Based on {{ results.overall.distance_count }} distance{{ 's' if results.overall.distance_count > 1 else '' }} from Power of 10</p>
+                    <p class="rating-note">Based on {{ results.overall.distance_count }} distance{{ 's' if results.overall.distance_count > 1 else '' }} from Athlinks</p>
                 </div>
                 {% endif %}
 
-                <!-- Distance Cards -->
+                <!-- Distance Cards - Personal Bests -->
+                {% if distance_comparisons %}
                 <div class="distance-overview">
                     <h3>Your Personal Bests</h3>
                     <div class="distance-grid">
@@ -85,18 +81,17 @@
                             <div class="distance-percentile">
                                 <span class="perc-badge">Top {{ (100 - data.percentile)|round(1) }}%</span>
                             </div>
-                            {% if data.age_grade %}
-                            <div class="distance-age-grade">
-                                <span class="ag-badge {{ data.age_grade_category }}">{{ data.age_grade }}% AG</span>
-                            </div>
-                            {% endif %}
                             <div class="distance-level ability-badge {{ data.ability_level }}">
                                 {{ data.ability_level|capitalize }}
                             </div>
+                            {% if data.event %}
+                            <div class="distance-event">{{ data.event }}</div>
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- Detailed Analysis for Each Distance -->
                 {% for distance, data in distance_comparisons.items() %}
@@ -113,17 +108,9 @@
                                 <span class="label">faster than other runners</span>
                             </div>
                             <p class="rating-message">{{ data.rating_message }}</p>
-                            {% if data.age_grade %}
-                            <div class="age-grade-detail">
-                                <span class="ag-big">{{ data.age_grade }}%</span>
-                                <span class="ag-info">Age Grade ({{ data.age_grade_category_name }})</span>
-                                {% if data.age_graded_time %}
-                                <span class="ag-time">Age-graded time: {{ data.age_graded_time }}</span>
-                                {% endif %}
-                            </div>
-                            {% endif %}
                         </div>
 
+                        {% if data.comparisons %}
                         <div class="detail-comparisons">
                             <h4>How You Compare</h4>
                             <table class="comparison-table">
@@ -151,11 +138,43 @@
                                 </tbody>
                             </table>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
 
+                <!-- Recent Races -->
+                {% if results.results %}
+                <div class="recent-runs">
+                    <h3>Recent Races</h3>
+                    <table class="runs-table">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Date</th>
+                                <th>Distance</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for race in results.results[:10] %}
+                            <tr>
+                                <td>{{ race.event_name or 'Unknown Event' }}</td>
+                                <td>{{ race.date or 'N/A' }}</td>
+                                <td>{{ race.distance or 'N/A' }}</td>
+                                <td>{{ race.time or 'N/A' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% if results.results|length > 10 %}
+                    <p class="more-runs">Showing 10 of {{ results.total_races }} races</p>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 <!-- Summary -->
+                {% if distance_comparisons %}
                 <div class="summary-section">
                     <h3>Overall Summary</h3>
                     <div class="summary-content">
@@ -176,19 +195,20 @@
                         <p>On average, you're faster than <strong>{{ avg_percentile|round(1) }}%</strong> of runners across all distances.</p>
                     </div>
                 </div>
+                {% endif %}
             </div>
             {% endif %}
         </main>
 
         <footer>
-            <p>Data sourced from <a href="https://www.thepowerof10.info" target="_blank">Power of 10</a></p>
+            <p>Data sourced from <a href="https://www.athlinks.com" target="_blank">Athlinks</a></p>
             <p>Comparison data from <a href="https://runrepeat.com" target="_blank">RunRepeat</a> (107.9M race results)</p>
         </footer>
     </div>
 
     <script>
         (function() {
-            const STORAGE_KEY = 'po10_athlete_id';
+            const STORAGE_KEY = 'athlinks_athlete_id';
             const form = document.querySelector('.search-form');
             const input = document.getElementById('athlete_id');
             const hasResults = document.querySelector('.results-section') !== null;

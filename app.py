@@ -16,10 +16,11 @@ REFRESH_COOLDOWN_HOURS = int(os.environ.get('REFRESH_COOLDOWN_HOURS', 6))
 
 from scraper import ParkrunScraper
 from po10_scraper import PowerOf10Scraper
-from comparisons import get_full_comparison, seconds_to_time_str
+from athlinks_scraper import AthlinksScraper
+from comparisons import get_full_comparison, seconds_to_time_str, get_percentile, DISTANCE_AVERAGES
 from distance_comparisons import get_all_distance_comparisons, get_distance_comparison
 from age_grading import calculate_age_grade, get_age_grade_category, seconds_to_time_str as ag_time_str
-from models import db, ParkrunAthlete, PowerOf10Athlete, Lookup
+from models import db, ParkrunAthlete, PowerOf10Athlete, AthlinksAthlete, Lookup
 
 app = Flask(__name__)
 
@@ -63,6 +64,7 @@ with app.app_context():
 
 parkrun_scraper = ParkrunScraper()
 po10_scraper = PowerOf10Scraper()
+athlinks_scraper = AthlinksScraper()
 
 
 def save_parkrun_athlete(athlete_id: str, results: dict):
@@ -174,6 +176,91 @@ def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None
     except Exception as e:
         db.session.rollback()
         print(f"Error saving PO10 athlete: {e}")
+
+
+def save_athlinks_athlete(athlete_id: str, results: dict, overall_stats: dict = None):
+    """Save or update Athlinks athlete data in the database."""
+    try:
+        athlete = AthlinksAthlete.query.filter_by(athlete_id=athlete_id).first()
+
+        pbs_json = json.dumps(results.get('pbs', {}))
+        results_json = json.dumps(results.get('results', [])[:20])  # Store last 20 races
+        stats = results.get('stats', {})
+
+        if athlete:
+            # Update existing record
+            athlete.name = results.get('name')
+            athlete.total_races = results.get('total_races', 0)
+            athlete.total_distance_km = stats.get('total_distance_km')
+            athlete.total_distance_miles = stats.get('total_distance_miles')
+            athlete.pbs_json = pbs_json
+            athlete.results_json = results_json
+            if overall_stats:
+                athlete.overall_percentile = overall_stats.get('percentile')
+                athlete.overall_ability_level = overall_stats.get('ability_level')
+            athlete.updated_at = datetime.utcnow()
+            athlete.lookup_count += 1
+            athlete.last_lookup_at = datetime.utcnow()
+        else:
+            # Create new record
+            athlete = AthlinksAthlete(
+                athlete_id=athlete_id,
+                name=results.get('name'),
+                total_races=results.get('total_races', 0),
+                total_distance_km=stats.get('total_distance_km'),
+                total_distance_miles=stats.get('total_distance_miles'),
+                pbs_json=pbs_json,
+                results_json=results_json,
+                overall_percentile=overall_stats.get('percentile') if overall_stats else None,
+                overall_ability_level=overall_stats.get('ability_level') if overall_stats else None,
+            )
+            db.session.add(athlete)
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error saving Athlinks athlete: {e}")
+
+
+def get_cached_athlinks_athlete(athlete_id: str, fresh_only: bool = True) -> dict:
+    """
+    Try to get Athlinks athlete from database cache.
+
+    Args:
+        athlete_id: The Athlinks athlete ID
+        fresh_only: If True, only return if cache is fresh (< REFRESH_COOLDOWN_HOURS old)
+    """
+    try:
+        athlete = AthlinksAthlete.query.filter_by(athlete_id=athlete_id).first()
+        if athlete:
+            # Check if cache is fresh enough
+            if fresh_only and not is_cache_fresh(athlete.updated_at):
+                return None  # Cache is stale, need to refresh
+
+            # Parse data from JSON
+            pbs = json.loads(athlete.pbs_json) if athlete.pbs_json else {}
+            results = json.loads(athlete.results_json) if athlete.results_json else []
+
+            return {
+                'name': athlete.name,
+                'athlete_id': athlete.athlete_id,
+                'total_races': athlete.total_races,
+                'pbs': pbs,
+                'results': results,
+                'stats': {
+                    'total_distance_km': athlete.total_distance_km,
+                    'total_distance_miles': athlete.total_distance_miles,
+                },
+                'overall': {
+                    'percentile': athlete.overall_percentile,
+                    'ability_level': athlete.overall_ability_level,
+                } if athlete.overall_percentile else None,
+                'from_cache': True,
+                'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
+            }
+    except Exception as e:
+        print(f"Error getting cached Athlinks athlete: {e}")
+    return None
 
 
 def log_lookup(source: str, athlete_id: str, athlete_name: str = None):
@@ -509,6 +596,165 @@ def power_of_10():
     )
 
 
+@app.route('/athlinks', methods=['GET', 'POST'])
+@limiter.limit("10 per minute", methods=["POST"])  # Athlinks uses ScraperAPI with JS rendering
+@limiter.limit("30 per hour", methods=["POST"])
+def athlinks():
+    """Athlinks multi-distance analysis page (USA)."""
+    results = None
+    error = None
+    distance_comparisons = None
+    from_cache = False
+
+    if request.method == 'POST':
+        athlete_id = request.form.get('athlete_id', '').strip()
+
+        if not athlete_id:
+            error = "Please enter an Athlinks athlete ID"
+        elif not athlete_id.isdigit():
+            error = "Athlete ID should be a number"
+        else:
+            # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
+            cached = get_cached_athlinks_athlete(athlete_id, fresh_only=True)
+            if cached and cached.get('pbs'):
+                results = cached
+                from_cache = True
+            else:
+                # No fresh cache - scrape new data
+                results = athlinks_scraper.get_athlete_results(athlete_id)
+
+                if not results:
+                    # Scraping failed - try stale cache as fallback
+                    stale_cache = get_cached_athlinks_athlete(athlete_id, fresh_only=False)
+                    if stale_cache and stale_cache.get('pbs'):
+                        results = stale_cache
+                        from_cache = True
+                    else:
+                        error = f"Could not find athlete ID {athlete_id}. Please check the ID is correct."
+                        results = None
+                elif not results.get('pbs') and not results.get('results'):
+                    error = f"No race results found for athlete ID {athlete_id}"
+                    results = None
+
+            # Generate comparisons if we have valid results with PBs
+            if results and results.get('pbs'):
+                distance_comparisons = {}
+
+                # Map Athlinks distance keys to our standard keys
+                distance_map = {
+                    '5k': '5k',
+                    '10k': '10k',
+                    'half': 'half',
+                    'marathon': 'marathon',
+                }
+
+                for athlinks_key, pb_data in results['pbs'].items():
+                    if athlinks_key in distance_map:
+                        our_key = distance_map[athlinks_key]
+                        time_seconds = pb_data.get('time_seconds')
+
+                        if time_seconds:
+                            # Get percentile for this distance
+                            percentile = get_percentile(time_seconds, our_key)
+
+                            # Get global average for comparison
+                            dist_avg = DISTANCE_AVERAGES.get(our_key, {})
+                            avg_seconds = dist_avg.get('overall', 0)
+
+                            # Determine ability level based on percentile
+                            if percentile >= 99:
+                                ability = 'elite'
+                            elif percentile >= 90:
+                                ability = 'advanced'
+                            elif percentile >= 70:
+                                ability = 'intermediate'
+                            elif percentile >= 50:
+                                ability = 'novice'
+                            else:
+                                ability = 'beginner'
+
+                            # Generate rating message
+                            if percentile >= 95:
+                                message = f"Outstanding {pb_data['distance_name']} performance!"
+                            elif percentile >= 85:
+                                message = f"Excellent {pb_data['distance_name']} time!"
+                            elif percentile >= 70:
+                                message = f"Strong {pb_data['distance_name']} runner!"
+                            elif percentile >= 50:
+                                message = f"Solid {pb_data['distance_name']} performance!"
+                            else:
+                                message = f"Keep training for {pb_data['distance_name']}!"
+
+                            # Build comparisons list
+                            comparisons = []
+                            if avg_seconds:
+                                diff = avg_seconds - time_seconds
+                                comparisons.append({
+                                    'name': f"Global {pb_data['distance_name']} Average",
+                                    'benchmark_time': seconds_to_time_str(avg_seconds),
+                                    'difference_str': seconds_to_time_str(abs(diff)),
+                                    'faster': diff > 0,
+                                })
+
+                            distance_comparisons[our_key] = {
+                                'distance_name': pb_data['distance_name'],
+                                'time_str': pb_data['time'],
+                                'time_seconds': time_seconds,
+                                'percentile': round(percentile, 1),
+                                'ability_level': ability,
+                                'rating_message': message,
+                                'event': pb_data.get('event'),
+                                'date': pb_data.get('date'),
+                                'comparisons': comparisons,
+                            }
+
+                # Calculate overall stats
+                if distance_comparisons:
+                    percentiles = [d['percentile'] for d in distance_comparisons.values()]
+                    avg_percentile = sum(percentiles) / len(percentiles)
+
+                    # Determine overall ability level
+                    levels = [d['ability_level'] for d in distance_comparisons.values()]
+                    level_priority = {'elite': 5, 'advanced': 4, 'intermediate': 3, 'novice': 2, 'beginner': 1}
+                    sorted_levels = sorted(levels, key=lambda x: level_priority.get(x, 0))
+                    overall_level = sorted_levels[len(sorted_levels) // 2]
+
+                    # Generate overall rating message
+                    if avg_percentile >= 95:
+                        overall_message = "Outstanding multi-distance performance!"
+                    elif avg_percentile >= 85:
+                        overall_message = "Excellent across all distances!"
+                    elif avg_percentile >= 75:
+                        overall_message = "Strong performances across the board!"
+                    elif avg_percentile >= 60:
+                        overall_message = "Solid running at multiple distances!"
+                    elif avg_percentile >= 40:
+                        overall_message = "Good foundation across distances!"
+                    else:
+                        overall_message = "Keep training - you're making progress!"
+
+                    results['overall'] = {
+                        'percentile': round(avg_percentile, 1),
+                        'ability_level': overall_level,
+                        'rating_message': overall_message,
+                        'distance_count': len(distance_comparisons),
+                    }
+
+                    # Save to database (only if freshly scraped)
+                    if not from_cache:
+                        save_athlinks_athlete(athlete_id, results, results['overall'])
+
+                    # Log every successful lookup
+                    log_lookup('athlinks', athlete_id, results.get('name'))
+
+    return render_template(
+        'athlinks.html',
+        results=results,
+        error=error,
+        distance_comparisons=distance_comparisons
+    )
+
+
 @app.route('/health')
 @limiter.exempt
 def health():
@@ -523,6 +769,7 @@ def stats():
     try:
         parkrun_count = ParkrunAthlete.query.count()
         po10_count = PowerOf10Athlete.query.count()
+        athlinks_count = AthlinksAthlete.query.count()
         lookup_count = Lookup.query.count()
 
         # Recent lookups
@@ -531,6 +778,7 @@ def stats():
         return {
             'parkrun_athletes': parkrun_count,
             'po10_athletes': po10_count,
+            'athlinks_athletes': athlinks_count,
             'total_lookups': lookup_count,
             'refresh_cooldown_hours': REFRESH_COOLDOWN_HOURS,
             'recent_lookups': [
