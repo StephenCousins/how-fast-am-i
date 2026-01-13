@@ -51,7 +51,11 @@ limiter = Limiter(
 
 # Create tables on startup and run migrations
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+        print("Database tables created/verified successfully")
+    except Exception as e:
+        print(f"Error creating database tables: {e}")
 
     # Migration: Add recent_results_json column if it doesn't exist
     try:
@@ -764,6 +768,13 @@ def athlinks():
 def health():
     """Health check endpoint for Railway."""
     return {'status': 'healthy'}, 200
+
+
+@app.route('/test')
+@limiter.exempt
+def test():
+    """Simple test endpoint."""
+    return 'App is running!', 200
 
 
 @app.route('/stats')
