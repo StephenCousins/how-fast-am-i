@@ -1,7 +1,11 @@
 """
-Parkrun "How Fast Am I" - Flask Web Application
-Compare your parkrun times to UK and worldwide averages.
-Also supports Power of 10 for multi-distance analysis.
+"How Fast Am I?" - Flask Web Application
+Compare your running times to worldwide averages.
+
+Supports:
+- Parkrun (UK/Global) - 5K parkrun results
+- Power of 10 (UK) - Multi-distance track & road results
+- Athlinks (USA) - Multi-distance road race results
 """
 
 import os
