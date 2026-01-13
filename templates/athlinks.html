@@ -206,29 +206,6 @@
         </footer>
     </div>
 
-    <script>
-        (function() {
-            const STORAGE_KEY = 'athlinks_athlete_id';
-            const form = document.querySelector('.search-form');
-            const input = document.getElementById('athlete_id');
-            const hasResults = document.querySelector('.results-section') !== null;
-
-            // Save athlete ID on form submit
-            form.addEventListener('submit', function() {
-                if (input.value) {
-                    sessionStorage.setItem(STORAGE_KEY, input.value);
-                }
-            });
-
-            // On page load, restore previous search if no results showing
-            if (!hasResults && !input.value) {
-                const savedId = sessionStorage.getItem(STORAGE_KEY);
-                if (savedId) {
-                    input.value = savedId;
-                    form.submit();
-                }
-            }
-        })();
-    </script>
+    <!-- Auto-submit disabled until Athlinks API is ready -->
 </body>
 </html>
