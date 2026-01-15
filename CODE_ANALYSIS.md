@@ -15,6 +15,7 @@ A Flask web application that scrapes and compares running times from Parkrun, Po
 - Flask-SQLAlchemy (ORM)
 - PostgreSQL/SQLite (database)
 - Gunicorn (WSGI server)
+- GitHub Actions (CI/CD)
 - Deployment: Railway
 
 ## Project Metrics
@@ -25,6 +26,7 @@ A Flask web application that scrapes and compares running times from Parkrun, Po
 | Total lines | ~5,000 |
 | Test files | 3 (1,270 lines) |
 | Test methods | 170 |
+| CI/CD | GitHub Actions (Python 3.10-3.12) |
 | Documentation | README.md + inline docs |
 
 ---
