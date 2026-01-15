@@ -3,10 +3,15 @@ Power of 10 scraper for UK athletics results.
 Extracts athlete PBs across multiple distances.
 """
 
+import logging
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
 import re
+
+from utils import parse_time_to_seconds, seconds_to_time_str
+
+logger = logging.getLogger(__name__)
 
 
 class PowerOf10Scraper:
@@ -35,42 +40,6 @@ class PowerOf10Scraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
-
-    def _parse_time_to_seconds(self, time_str: str) -> Optional[int]:
-        """Convert time string to seconds. Handles MM:SS, H:MM:SS, HH:MM:SS formats."""
-        if not time_str or time_str == '--':
-            return None
-
-        time_str = time_str.strip()
-
-        # Remove any trailing 'c' (chip time indicator) or other characters
-        time_str = re.sub(r'[a-zA-Z]$', '', time_str)
-
-        parts = time_str.split(':')
-
-        try:
-            if len(parts) == 2:
-                # MM:SS
-                return int(parts[0]) * 60 + int(parts[1])
-            elif len(parts) == 3:
-                # H:MM:SS or HH:MM:SS
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-        except ValueError:
-            return None
-
-        return None
-
-    def _seconds_to_time_str(self, seconds: int) -> str:
-        """Convert seconds to time string."""
-        if seconds >= 3600:
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            secs = seconds % 60
-            return f"{hours}:{minutes:02d}:{secs:02d}"
-        else:
-            minutes = seconds // 60
-            secs = seconds % 60
-            return f"{minutes}:{secs:02d}"
 
     def get_athlete_by_id(self, athlete_id: str) -> dict:
         """
@@ -165,7 +134,7 @@ class PowerOf10Scraper:
                 event = cells[0].get_text(strip=True)
                 if event in target_events:
                     pb_text = cells[1].get_text(strip=True)
-                    pb_seconds = self._parse_time_to_seconds(pb_text)
+                    pb_seconds = parse_time_to_seconds(pb_text)
 
                     if pb_seconds:
                         # Normalize event name
@@ -176,7 +145,7 @@ class PowerOf10Scraper:
                             pbs[normalized_event] = {
                                 'time': pb_text,
                                 'seconds': pb_seconds,
-                                'time_formatted': self._seconds_to_time_str(pb_seconds)
+                                'time_formatted': seconds_to_time_str(pb_seconds)
                             }
 
         return {
@@ -192,12 +161,13 @@ class PowerOf10Scraper:
 
 # For testing
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     scraper = PowerOf10Scraper()
     result = scraper.get_athlete_by_id("434569")
 
-    print(f"Name: {result.get('name')}")
-    print(f"Club: {result.get('club')}")
-    print(f"Age Group: {result.get('age_group')}")
-    print(f"\nPersonal Bests:")
+    logger.info(f"Name: {result.get('name')}")
+    logger.info(f"Club: {result.get('club')}")
+    logger.info(f"Age Group: {result.get('age_group')}")
+    logger.info("Personal Bests:")
     for event, pb in result.get('pbs', {}).items():
-        print(f"  {event}: {pb['time_formatted']}")
+        logger.info(f"  {event}: {pb['time_formatted']}")

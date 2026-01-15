@@ -11,28 +11,10 @@ Data sources:
 
 from typing import Optional
 
+from utils import time_str_to_seconds, seconds_to_time_str
 
-def time_str_to_seconds(time_str: str) -> int:
-    """Convert MM:SS or HH:MM:SS to seconds."""
-    parts = time_str.split(':')
-    if len(parts) == 2:
-        return int(parts[0]) * 60 + int(parts[1])
-    elif len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    return 0
-
-
-def seconds_to_time_str(seconds: int) -> str:
-    """Convert seconds to MM:SS or HH:MM:SS."""
-    if seconds >= 3600:
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    else:
-        minutes = seconds // 60
-        secs = seconds % 60
-        return f"{minutes}:{secs:02d}"
+# Re-export for backwards compatibility
+__all__ = ['time_str_to_seconds', 'seconds_to_time_str', 'get_full_comparison', 'get_percentile', 'DISTANCE_AVERAGES']
 
 
 # Parkrun averages (in seconds)
@@ -521,32 +503,36 @@ def get_full_comparison(time_seconds: int, age: Optional[int] = None, gender: Op
 
 # For testing
 if __name__ == "__main__":
-    print("=== 5K Test (25:00) ===")
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    logger.info("=== 5K Test (25:00) ===")
     test_time = time_str_to_seconds("25:00")
     result = get_full_comparison(test_time, age=35, gender='male', distance='5k')
-    print(f"Time: {result['time_str']}")
-    print(f"Percentile: Faster than {result['percentile']}% of 5K runners")
-    print(f"Ability Level: {result['ability_level']}")
-    print(f"Rating: {result['rating_message']}")
+    logger.info(f"Time: {result['time_str']}")
+    logger.info(f"Percentile: Faster than {result['percentile']}% of 5K runners")
+    logger.info(f"Ability Level: {result['ability_level']}")
+    logger.info(f"Rating: {result['rating_message']}")
     if result['distance_comparison']:
-        print(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
+        logger.info(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
 
-    print("\n=== Half Marathon Test (1:45:00) ===")
+    logger.info("=== Half Marathon Test (1:45:00) ===")
     test_time = time_str_to_seconds("1:45:00")
     result = get_full_comparison(test_time, age=35, gender='male', distance='half')
-    print(f"Time: {result['time_str']}")
-    print(f"Percentile: Faster than {result['percentile']}% of half marathon runners")
+    logger.info(f"Time: {result['time_str']}")
+    logger.info(f"Percentile: Faster than {result['percentile']}% of half marathon runners")
     if result['distance_comparison']:
-        print(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
+        logger.info(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
 
-    print("\n=== Marathon Test (4:00:00) ===")
+    logger.info("=== Marathon Test (4:00:00) ===")
     test_time = time_str_to_seconds("4:00:00")
     result = get_full_comparison(test_time, age=40, gender='female', distance='marathon')
-    print(f"Time: {result['time_str']}")
-    print(f"Percentile: Faster than {result['percentile']}% of marathon runners")
+    logger.info(f"Time: {result['time_str']}")
+    logger.info(f"Percentile: Faster than {result['percentile']}% of marathon runners")
     if result['distance_comparison']:
-        print(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
+        logger.info(f"vs {result['distance_comparison']['name']}: {result['distance_comparison']['average_time']}")
 
-    print("\n=== Global Distance Averages ===")
+    logger.info("=== Global Distance Averages ===")
     for dist in compare_to_all_distances(0, 'male'):
-        print(f"{dist['distance']}: {dist['average_time']} (Male avg)")
+        logger.info(f"{dist['distance']}: {dist['average_time']} (Male avg)")

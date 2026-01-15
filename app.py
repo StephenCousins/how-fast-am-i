@@ -8,6 +8,7 @@ Supports:
 - Athlinks (USA) - Multi-distance road race results
 """
 
+import logging
 import os
 import json
 from datetime import datetime, timedelta
@@ -15,15 +16,23 @@ from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Minimum hours before refresh is allowed (prevents abuse)
 REFRESH_COOLDOWN_HOURS = int(os.environ.get('REFRESH_COOLDOWN_HOURS', 6))
 
 from scraper import ParkrunScraper
 from po10_scraper import PowerOf10Scraper
 # from athlinks_scraper import AthlinksScraper  # Disabled until API key received
-from comparisons import get_full_comparison, seconds_to_time_str, get_percentile, DISTANCE_AVERAGES
+from utils import seconds_to_time_str
+from comparisons import get_full_comparison, get_percentile, DISTANCE_AVERAGES
 from distance_comparisons import get_all_distance_comparisons, get_distance_comparison
-from age_grading import calculate_age_grade, get_age_grade_category, seconds_to_time_str as ag_time_str
+from age_grading import calculate_age_grade, get_age_grade_category
 from models import db, ParkrunAthlete, PowerOf10Athlete, AthlinksAthlete, Lookup
 
 app = Flask(__name__)
@@ -53,9 +62,9 @@ limiter = Limiter(
 with app.app_context():
     try:
         db.create_all()
-        print("Database tables created/verified successfully")
+        logger.info("Database tables created/verified successfully")
     except Exception as e:
-        print(f"Error creating database tables: {e}")
+        logger.error(f"Error creating database tables: {e}")
 
     # Migration: Add recent_results_json column if it doesn't exist
     try:
@@ -65,10 +74,10 @@ with app.app_context():
         if 'recent_results_json' not in columns:
             db.session.execute(text('ALTER TABLE parkrun_athletes ADD COLUMN recent_results_json TEXT'))
             db.session.commit()
-            print("Migration: Added recent_results_json column")
+            logger.info("Migration: Added recent_results_json column")
     except Exception as e:
         db.session.rollback()
-        print(f"Migration check: {e}")
+        logger.debug(f"Migration check: {e}")
 
 parkrun_scraper = ParkrunScraper()
 po10_scraper = PowerOf10Scraper()
@@ -141,7 +150,7 @@ def save_parkrun_athlete(athlete_id: str, results: dict):
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Error saving parkrun athlete: {e}")
+        logger.error(f"Error saving parkrun athlete: {e}")
 
 
 def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None):
@@ -183,7 +192,7 @@ def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Error saving PO10 athlete: {e}")
+        logger.error(f"Error saving PO10 athlete: {e}")
 
 
 def save_athlinks_athlete(athlete_id: str, results: dict, overall_stats: dict = None):
@@ -227,7 +236,7 @@ def save_athlinks_athlete(athlete_id: str, results: dict, overall_stats: dict = 
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Error saving Athlinks athlete: {e}")
+        logger.error(f"Error saving Athlinks athlete: {e}")
 
 
 def get_cached_athlinks_athlete(athlete_id: str, fresh_only: bool = True) -> dict:
@@ -267,7 +276,7 @@ def get_cached_athlinks_athlete(athlete_id: str, fresh_only: bool = True) -> dic
                 'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
             }
     except Exception as e:
-        print(f"Error getting cached Athlinks athlete: {e}")
+        logger.error(f"Error getting cached Athlinks athlete: {e}")
     return None
 
 
@@ -284,7 +293,7 @@ def log_lookup(source: str, athlete_id: str, athlete_name: str = None):
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Error logging lookup: {e}")
+        logger.warning(f"Error logging lookup: {e}")
 
 
 def is_cache_fresh(updated_at: datetime) -> bool:
@@ -348,7 +357,7 @@ def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = True) -> dict
                 'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
             }
     except Exception as e:
-        print(f"Error getting cached athlete: {e}")
+        logger.error(f"Error getting cached athlete: {e}")
     return None
 
 
@@ -386,7 +395,7 @@ def get_cached_po10_athlete(athlete_id: str, fresh_only: bool = True) -> dict:
                 'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
             }
     except Exception as e:
-        print(f"Error getting cached PO10 athlete: {e}")
+        logger.error(f"Error getting cached PO10 athlete: {e}")
     return None
 
 
@@ -542,7 +551,7 @@ def power_of_10():
                     )
                     ag_cat, ag_cat_name = get_age_grade_category(ag_pct)
                     data['age_grade'] = ag_pct
-                    data['age_graded_time'] = ag_time_str(ag_time) if ag_time else None
+                    data['age_graded_time'] = seconds_to_time_str(ag_time) if ag_time else None
                     data['age_grade_category'] = ag_cat
                     data['age_grade_category_name'] = ag_cat_name
 

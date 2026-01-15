@@ -6,28 +6,7 @@ Data sourced from runninglevel.com and running research.
 
 from typing import Optional
 
-
-def time_str_to_seconds(time_str: str) -> int:
-    """Convert MM:SS or H:MM:SS to seconds."""
-    parts = time_str.split(':')
-    if len(parts) == 2:
-        return int(parts[0]) * 60 + int(parts[1])
-    elif len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    return 0
-
-
-def seconds_to_time_str(seconds: int) -> str:
-    """Convert seconds to MM:SS or H:MM:SS."""
-    if seconds >= 3600:
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    else:
-        minutes = seconds // 60
-        secs = seconds % 60
-        return f"{minutes}:{secs:02d}"
+from utils import time_str_to_seconds, seconds_to_time_str
 
 
 # Distance configurations
@@ -426,6 +405,10 @@ def get_all_distance_comparisons(pbs: dict, age: Optional[int] = None, gender: O
 
 # For testing
 if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
     # Test with sample times
     pbs = {
         '5K': {'seconds': time_str_to_seconds('18:16'), 'time': '18:16'},
@@ -437,7 +420,7 @@ if __name__ == "__main__":
     results = get_all_distance_comparisons(pbs, age=55, gender='male')
 
     for distance, data in results.items():
-        print(f"\n{distance}: {data['time_str']}")
-        print(f"  Percentile: {data['percentile']}%")
-        print(f"  Level: {data['ability_level']}")
-        print(f"  {data['rating_message']}")
+        logger.info(f"{distance}: {data['time_str']}")
+        logger.info(f"  Percentile: {data['percentile']}%")
+        logger.info(f"  Level: {data['ability_level']}")
+        logger.info(f"  {data['rating_message']}")

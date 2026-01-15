@@ -10,6 +10,8 @@ Formula: Age Grade % = (Open Standard × Age Factor) / Actual Time × 100
 
 from typing import Optional, Tuple
 
+from utils import seconds_to_time_str
+
 
 # 2023 WMA Open Class Standards (in seconds)
 # These represent approximately world record level performances
@@ -289,21 +291,12 @@ def get_age_grade_category(age_grade: float) -> Tuple[str, str]:
         return 'beginner', 'Beginner'
 
 
-def seconds_to_time_str(seconds: int) -> str:
-    """Convert seconds to MM:SS or H:MM:SS format."""
-    if seconds >= 3600:
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    else:
-        minutes = seconds // 60
-        secs = seconds % 60
-        return f"{minutes}:{secs:02d}"
-
-
 # For testing
 if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
     # Test with sample times (Stephen Cousins V55 Male)
     test_cases = [
         ('5K', 18*60+16, 55, 'male'),      # 18:16
@@ -312,14 +305,13 @@ if __name__ == "__main__":
         ('Marathon', 175*60+42, 55, 'male'),      # 2:55:42
     ]
 
-    print("Age Grading Test Results:")
-    print("-" * 70)
+    logger.info("Age Grading Test Results:")
+    logger.info("-" * 70)
 
     for distance, time_sec, age, gender in test_cases:
         ag_pct, ag_time = calculate_age_grade(time_sec, distance, age, gender)
         category, cat_name = get_age_grade_category(ag_pct)
 
-        print(f"{distance}: {seconds_to_time_str(time_sec)}")
-        print(f"  Age Grade: {ag_pct}% ({cat_name})")
-        print(f"  Age-Graded Time: {seconds_to_time_str(ag_time)}")
-        print()
+        logger.info(f"{distance}: {seconds_to_time_str(time_sec)}")
+        logger.info(f"  Age Grade: {ag_pct}% ({cat_name})")
+        logger.info(f"  Age-Graded Time: {seconds_to_time_str(ag_time)}")

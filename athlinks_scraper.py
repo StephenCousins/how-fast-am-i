@@ -4,6 +4,7 @@ Scrapes athlete race results from their public Athlinks profile.
 Uses ScraperAPI with JavaScript rendering since Athlinks is a SPA.
 """
 
+import logging
 import os
 import re
 import json
@@ -11,6 +12,10 @@ import requests
 from bs4 import BeautifulSoup
 from typing import Optional, Dict, List
 from urllib.parse import quote
+
+from utils import parse_time_to_seconds, seconds_to_time_str
+
+logger = logging.getLogger(__name__)
 
 
 class AthlinksScraper:
@@ -38,7 +43,7 @@ class AthlinksScraper:
         self.session.headers.update(self.HEADERS)
         self.scraper_api_key = os.environ.get('SCRAPER_API_KEY')
         if self.scraper_api_key:
-            print("ScraperAPI enabled for Athlinks scraping (with JS rendering)")
+            logger.info("ScraperAPI enabled for Athlinks scraping (with JS rendering)")
 
     def _get_url(self, target_url: str, render_js: bool = True) -> str:
         """Get the URL to fetch - either direct or via ScraperAPI with JS rendering."""
@@ -47,39 +52,6 @@ class AthlinksScraper:
             render_param = "&render=true" if render_js else ""
             return f"{self.SCRAPER_API_URL}?api_key={self.scraper_api_key}&url={encoded_url}{render_param}&wait_for_selector=.race-result"
         return target_url
-
-    def _parse_time(self, time_str: str) -> Optional[int]:
-        """Parse a time string (HH:MM:SS or MM:SS) to seconds."""
-        if not time_str:
-            return None
-
-        time_str = time_str.strip()
-
-        # Handle HH:MM:SS format
-        match = re.match(r'^(\d+):(\d{2}):(\d{2})$', time_str)
-        if match:
-            hours, mins, secs = map(int, match.groups())
-            return hours * 3600 + mins * 60 + secs
-
-        # Handle MM:SS format
-        match = re.match(r'^(\d+):(\d{2})$', time_str)
-        if match:
-            mins, secs = map(int, match.groups())
-            return mins * 60 + secs
-
-        return None
-
-    def _seconds_to_time(self, seconds: int) -> str:
-        """Convert seconds to time string."""
-        if seconds >= 3600:
-            hours = seconds // 3600
-            mins = (seconds % 3600) // 60
-            secs = seconds % 60
-            return f"{hours}:{mins:02d}:{secs:02d}"
-        else:
-            mins = seconds // 60
-            secs = seconds % 60
-            return f"{mins}:{secs:02d}"
 
     def _parse_distance_km(self, distance_str: str) -> Optional[float]:
         """Parse distance string to kilometers."""
@@ -131,7 +103,7 @@ class AthlinksScraper:
             response = self.session.get(fetch_url, timeout=60)
             response.raise_for_status()
         except requests.RequestException as e:
-            print(f"Request failed: {e}")
+            logger.warning(f"Request failed: {e}")
             return None
 
         html = response.text
@@ -241,7 +213,7 @@ class AthlinksScraper:
         time_elem = elem.select_one('.time, .finish-time, .result-time')
         if time_elem:
             race['time'] = time_elem.text.strip()
-            race['time_seconds'] = self._parse_time(race['time'])
+            race['time_seconds'] = parse_time_to_seconds(race['time'])
 
         # Distance
         distance_elem = elem.select_one('.distance, .race-distance')
@@ -300,7 +272,7 @@ class AthlinksScraper:
                     'distance': race.get('distance'),
                     'distance_km': race.get('distanceKm'),
                     'time': race.get('time') or race.get('finishTime'),
-                    'time_seconds': race.get('timeSeconds') or self._parse_time(race.get('time', '')),
+                    'time_seconds': race.get('timeSeconds') or parse_time_to_seconds(race.get('time', '')),
                     'pace': race.get('pace'),
                     'place': race.get('place') or race.get('overallPlace'),
                     'age_group_place': race.get('ageGroupPlace') or race.get('divisionPlace'),
@@ -360,21 +332,22 @@ class AthlinksScraper:
 
 # For testing
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     scraper = AthlinksScraper()
 
     # Test with a sample athlete ID
     test_id = "319145186"
-    print(f"Testing Athlinks scraper with athlete ID: {test_id}")
+    logger.info(f"Testing Athlinks scraper with athlete ID: {test_id}")
 
     results = scraper.get_athlete_results(test_id)
     if results:
-        print(f"\nAthlete: {results['name']}")
-        print(f"Total races: {results['total_races']}")
-        print(f"\nPersonal Bests:")
+        logger.info(f"Athlete: {results['name']}")
+        logger.info(f"Total races: {results['total_races']}")
+        logger.info("Personal Bests:")
         for dist, pb in results.get('pbs', {}).items():
-            print(f"  {pb['distance_name']}: {pb['time']} at {pb['event']}")
-        print(f"\nRecent results:")
+            logger.info(f"  {pb['distance_name']}: {pb['time']} at {pb['event']}")
+        logger.info("Recent results:")
         for race in results['results'][:5]:
-            print(f"  {race.get('event_name', 'Unknown')}: {race.get('time', 'N/A')}")
+            logger.info(f"  {race.get('event_name', 'Unknown')}: {race.get('time', 'N/A')}")
     else:
-        print("Failed to fetch results")
+        logger.info("Failed to fetch results")

@@ -4,12 +4,17 @@ Scrapes athlete results from their public parkrun profile.
 Supports ScraperAPI for bypassing IP blocks on cloud servers.
 """
 
+import logging
 import os
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
 from urllib.parse import quote
 import re
+
+from utils import parse_time_to_seconds, seconds_to_time_str
+
+logger = logging.getLogger(__name__)
 
 
 class ParkrunScraper:
@@ -43,7 +48,7 @@ class ParkrunScraper:
         # Check for ScraperAPI key (used on Railway to bypass IP blocks)
         self.scraper_api_key = os.environ.get('SCRAPER_API_KEY')
         if self.scraper_api_key:
-            print("ScraperAPI enabled for parkrun scraping")
+            logger.info("ScraperAPI enabled for parkrun scraping")
 
     def _get_url(self, target_url: str) -> str:
         """Get the URL to fetch - either direct or via ScraperAPI."""
@@ -52,36 +57,6 @@ class ParkrunScraper:
             encoded_url = quote(target_url, safe='')
             return f"{self.SCRAPER_API_URL}?api_key={self.scraper_api_key}&url={encoded_url}&render=false"
         return target_url
-
-    def _parse_time_to_seconds(self, time_str: str) -> Optional[int]:
-        """Convert time string (MM:SS or HH:MM:SS) to seconds."""
-        if not time_str or time_str == '--':
-            return None
-
-        time_str = time_str.strip()
-        parts = time_str.split(':')
-
-        try:
-            if len(parts) == 2:
-                return int(parts[0]) * 60 + int(parts[1])
-            elif len(parts) == 3:
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-        except ValueError:
-            return None
-
-        return None
-
-    def _seconds_to_time_str(self, seconds: int) -> str:
-        """Convert seconds back to MM:SS or HH:MM:SS format."""
-        if seconds >= 3600:
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            secs = seconds % 60
-            return f"{hours}:{minutes:02d}:{secs:02d}"
-        else:
-            minutes = seconds // 60
-            secs = seconds % 60
-            return f"{minutes}:{secs:02d}"
 
     def get_athlete_results(self, athlete_id: str) -> dict:
         """
@@ -184,7 +159,7 @@ class ParkrunScraper:
                     }
 
                     # Parse time to seconds for calculations
-                    result['time_seconds'] = self._parse_time_to_seconds(result['time'])
+                    result['time_seconds'] = parse_time_to_seconds(result['time'])
 
                     if result['time_seconds']:  # Only add valid results
                         results.append(result)
@@ -299,13 +274,13 @@ class ParkrunScraper:
         return {
             # Basic stats
             'average_seconds': int(avg_seconds),
-            'average_time': self._seconds_to_time_str(int(avg_seconds)),
+            'average_time': seconds_to_time_str(int(avg_seconds)),
             'best_seconds': best_seconds,
-            'best_time': self._seconds_to_time_str(best_seconds),
+            'best_time': seconds_to_time_str(best_seconds),
             'worst_seconds': worst_seconds,
-            'worst_time': self._seconds_to_time_str(worst_seconds),
+            'worst_time': seconds_to_time_str(worst_seconds),
             'median_seconds': int(median_seconds),
-            'median_time': self._seconds_to_time_str(int(median_seconds)),
+            'median_time': seconds_to_time_str(int(median_seconds)),
             'total_runs': len(times),
 
             # PB context
@@ -320,22 +295,22 @@ class ParkrunScraper:
             # Outlier analysis
             'outlier_count': len(outliers),
             'normal_run_count': len(normal_runs),
-            'outlier_threshold_time': self._seconds_to_time_str(int(outlier_threshold)),
+            'outlier_threshold_time': seconds_to_time_str(int(outlier_threshold)),
 
             # Typical stats (excluding outliers)
             'typical_avg_seconds': int(typical_avg_seconds),
-            'typical_avg_time': self._seconds_to_time_str(int(typical_avg_seconds)),
+            'typical_avg_time': seconds_to_time_str(int(typical_avg_seconds)),
             'typical_median_seconds': int(typical_median),
-            'typical_median_time': self._seconds_to_time_str(int(typical_median)),
+            'typical_median_time': seconds_to_time_str(int(typical_median)),
 
             # Recent form
             'recent_run_count': len(recent_times),
             'recent_avg_seconds': int(recent_avg) if recent_avg else None,
-            'recent_avg_time': self._seconds_to_time_str(int(recent_avg)) if recent_avg else None,
+            'recent_avg_time': seconds_to_time_str(int(recent_avg)) if recent_avg else None,
 
             # Historical comparison
             'older_avg_seconds': int(older_avg) if older_avg else None,
-            'older_avg_time': self._seconds_to_time_str(int(older_avg)) if older_avg else None,
+            'older_avg_time': seconds_to_time_str(int(older_avg)) if older_avg else None,
 
             # Trend
             'trend': trend['direction'],
@@ -365,10 +340,10 @@ class ParkrunScraper:
 
         if diff > threshold:
             direction = 'improving'
-            message = f"Getting faster! Recent runs are {self._seconds_to_time_str(int(abs(diff)))} quicker than your historical average"
+            message = f"Getting faster! Recent runs are {seconds_to_time_str(int(abs(diff)))} quicker than your historical average"
         elif diff < -threshold:
             direction = 'declining'
-            message = f"Recent runs are {self._seconds_to_time_str(int(abs(diff)))} slower than your historical average"
+            message = f"Recent runs are {seconds_to_time_str(int(abs(diff)))} slower than your historical average"
         else:
             direction = 'stable'
             message = "Your pace is consistent - maintaining steady performance"
@@ -377,7 +352,7 @@ class ParkrunScraper:
             'direction': direction,
             'message': message,
             'diff_seconds': int(diff),
-            'diff_time': self._seconds_to_time_str(int(abs(diff)))
+            'diff_time': seconds_to_time_str(int(abs(diff)))
         }
 
     def _calculate_time_ago(self, date_str: str) -> str:
@@ -412,7 +387,8 @@ class ParkrunScraper:
 
 # For testing
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     scraper = ParkrunScraper()
     # Test with a sample ID
     result = scraper.get_athlete_results("123456")
-    print(result)
+    logger.info(result)
