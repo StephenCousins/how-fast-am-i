@@ -1,5 +1,7 @@
 # How Fast Am I? - Parkrun Comparison Tool
 
+[![Tests](https://github.com/StephenCousins/how-fast-am-i/actions/workflows/tests.yml/badge.svg)](https://github.com/StephenCousins/how-fast-am-i/actions/workflows/tests.yml)
+
 A Flask web application that scrapes and compares running times from multiple platforms, providing percentile rankings, age grading, and trend analysis.
 
 ## Features
