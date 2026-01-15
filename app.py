@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
 # Configure logging
 logging.basicConfig(
@@ -63,7 +64,9 @@ with app.app_context():
     try:
         db.create_all()
         logger.info("Database tables created/verified successfully")
-    except Exception as e:
+    except OperationalError as e:
+        logger.error(f"Database connection error: {e}")
+    except SQLAlchemyError as e:
         logger.error(f"Error creating database tables: {e}")
 
     # Migration: Add recent_results_json column if it doesn't exist
@@ -75,7 +78,10 @@ with app.app_context():
             db.session.execute(text('ALTER TABLE parkrun_athletes ADD COLUMN recent_results_json TEXT'))
             db.session.commit()
             logger.info("Migration: Added recent_results_json column")
-    except Exception as e:
+    except OperationalError as e:
+        db.session.rollback()
+        logger.debug(f"Migration check (table may not exist yet): {e}")
+    except SQLAlchemyError as e:
         db.session.rollback()
         logger.debug(f"Migration check: {e}")
 
@@ -148,7 +154,7 @@ def save_parkrun_athlete(athlete_id: str, results: dict):
             db.session.add(athlete)
 
         db.session.commit()
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.session.rollback()
         logger.error(f"Error saving parkrun athlete: {e}")
 
@@ -190,7 +196,7 @@ def save_po10_athlete(athlete_id: str, results: dict, overall_stats: dict = None
             db.session.add(athlete)
 
         db.session.commit()
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.session.rollback()
         logger.error(f"Error saving PO10 athlete: {e}")
 
@@ -234,7 +240,7 @@ def save_athlinks_athlete(athlete_id: str, results: dict, overall_stats: dict = 
             db.session.add(athlete)
 
         db.session.commit()
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.session.rollback()
         logger.error(f"Error saving Athlinks athlete: {e}")
 
@@ -275,8 +281,10 @@ def get_cached_athlinks_athlete(athlete_id: str, fresh_only: bool = True) -> dic
                 'from_cache': True,
                 'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
             }
-    except Exception as e:
-        logger.error(f"Error getting cached Athlinks athlete: {e}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing cached Athlinks athlete JSON: {e}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting cached Athlinks athlete: {e}")
     return None
 
 
@@ -291,7 +299,7 @@ def log_lookup(source: str, athlete_id: str, athlete_name: str = None):
         )
         db.session.add(lookup)
         db.session.commit()
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.session.rollback()
         logger.warning(f"Error logging lookup: {e}")
 
@@ -356,8 +364,8 @@ def get_cached_parkrun_athlete(athlete_id: str, fresh_only: bool = True) -> dict
                 'from_cache': True,
                 'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
             }
-    except Exception as e:
-        logger.error(f"Error getting cached athlete: {e}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting cached parkrun athlete: {e}")
     return None
 
 
@@ -394,8 +402,10 @@ def get_cached_po10_athlete(athlete_id: str, fresh_only: bool = True) -> dict:
                 'from_cache': True,
                 'cached_at': athlete.updated_at.isoformat() if athlete.updated_at else None,
             }
-    except Exception as e:
-        logger.error(f"Error getting cached PO10 athlete: {e}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing cached PO10 athlete JSON: {e}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting cached PO10 athlete: {e}")
     return None
 
 
@@ -668,8 +678,9 @@ def stats():
                 for l in recent_lookups
             ]
         }
-    except Exception as e:
-        return {'error': str(e)}, 500
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in stats endpoint: {e}")
+        return {'error': 'Database error retrieving statistics'}, 500
 
 
 @app.errorhandler(429)
