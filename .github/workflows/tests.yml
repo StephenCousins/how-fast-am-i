@@ -1,0 +1,63 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install test dependencies first
+          pip install pytest pytest-asyncio aioresponses
+          # Install main dependencies (skip psycopg2-binary for CI, use SQLite)
+          pip install flask flask-sqlalchemy flask-limiter flask-migrate
+          pip install requests beautifulsoup4 aiohttp
+
+      - name: Run tests
+        run: |
+          python -m pytest -v --tb=short
+        env:
+          DATABASE_URL: sqlite:///test.db
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check syntax errors
+        run: |
+          python -m py_compile app.py scraper.py po10_scraper.py async_scraper.py utils.py
