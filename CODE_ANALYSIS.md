@@ -21,10 +21,10 @@ A Flask web application that scrapes and compares running times from Parkrun, Po
 
 | Metric | Value |
 |--------|-------|
-| Python files | 12 |
-| Total lines | ~4,500 |
-| Test files | 2 (781 lines) |
-| Test methods | 134 |
+| Python files | 13 |
+| Total lines | ~5,000 |
+| Test files | 3 (1,270 lines) |
+| Test methods | 170 |
 | Documentation | README.md + inline docs |
 
 ---
