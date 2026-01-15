@@ -16,6 +16,7 @@ from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
+from flask_migrate import Migrate
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +51,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Initialize database
 db.init_app(app)
 
+# Initialize Flask-Migrate for database migrations
+migrate = Migrate(app, db)
+
 # Rate limiting configuration to protect ScraperAPI credits
 # Uses in-memory storage (resets on app restart)
 limiter = Limiter(
@@ -59,7 +63,8 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-# Create tables on startup and run migrations
+# Create tables on startup (for development/new deployments)
+# For production, use: flask db upgrade
 with app.app_context():
     try:
         db.create_all()
@@ -69,15 +74,17 @@ with app.app_context():
     except SQLAlchemyError as e:
         logger.error(f"Error creating database tables: {e}")
 
-    # Migration: Add recent_results_json column if it doesn't exist
+    # Legacy migration support: Add recent_results_json column if it doesn't exist
+    # New migrations should use: flask db migrate -m "description"
     try:
         from sqlalchemy import text, inspect
         inspector = inspect(db.engine)
-        columns = [col['name'] for col in inspector.get_columns('parkrun_athletes')]
-        if 'recent_results_json' not in columns:
-            db.session.execute(text('ALTER TABLE parkrun_athletes ADD COLUMN recent_results_json TEXT'))
-            db.session.commit()
-            logger.info("Migration: Added recent_results_json column")
+        if inspector.has_table('parkrun_athletes'):
+            columns = [col['name'] for col in inspector.get_columns('parkrun_athletes')]
+            if 'recent_results_json' not in columns:
+                db.session.execute(text('ALTER TABLE parkrun_athletes ADD COLUMN recent_results_json TEXT'))
+                db.session.commit()
+                logger.info("Migration: Added recent_results_json column")
     except OperationalError as e:
         db.session.rollback()
         logger.debug(f"Migration check (table may not exist yet): {e}")
@@ -418,6 +425,8 @@ def index():
     error = None
     comparison = None
     from_cache = False
+    cache_age_str = None
+    force_refresh = request.form.get('force_refresh') == '1'
 
     if request.method == 'POST':
         athlete_id_input = request.form.get('athlete_id', '')
@@ -429,10 +438,24 @@ def index():
         else:
             athlete_id = validation.sanitized_id
             # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
-            cached = get_cached_parkrun_athlete(athlete_id, fresh_only=True)
+            # Skip cache if force_refresh is requested
+            cached = None if force_refresh else get_cached_parkrun_athlete(athlete_id, fresh_only=True)
             if cached:
                 results = cached
                 from_cache = True
+                # Calculate cache age for display
+                if cached.get('cached_at'):
+                    try:
+                        cached_time = datetime.fromisoformat(cached['cached_at'])
+                        age = datetime.utcnow() - cached_time
+                        hours = int(age.total_seconds() // 3600)
+                        minutes = int((age.total_seconds() % 3600) // 60)
+                        if hours > 0:
+                            cache_age_str = f"{hours}h {minutes}m ago"
+                        else:
+                            cache_age_str = f"{minutes}m ago"
+                    except (ValueError, TypeError):
+                        cache_age_str = "recently"
             else:
                 # No fresh cache - scrape new data
                 results = parkrun_scraper.get_athlete_results(athlete_id)
@@ -485,7 +508,10 @@ def index():
         'index.html',
         results=results,
         error=error,
-        comparison=comparison
+        comparison=comparison,
+        from_cache=from_cache,
+        cache_age_str=cache_age_str,
+        refresh_cooldown_hours=REFRESH_COOLDOWN_HOURS
     )
 
 
@@ -498,6 +524,8 @@ def power_of_10():
     error = None
     distance_comparisons = None
     from_cache = False
+    cache_age_str = None
+    force_refresh = request.form.get('force_refresh') == '1'
 
     if request.method == 'POST':
         athlete_id_input = request.form.get('athlete_id', '')
@@ -509,10 +537,24 @@ def power_of_10():
         else:
             athlete_id = validation.sanitized_id
             # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
-            cached = get_cached_po10_athlete(athlete_id, fresh_only=True)
+            # Skip cache if force_refresh is requested
+            cached = None if force_refresh else get_cached_po10_athlete(athlete_id, fresh_only=True)
             if cached and cached.get('pbs'):
                 results = cached
                 from_cache = True
+                # Calculate cache age for display
+                if cached.get('cached_at'):
+                    try:
+                        cached_time = datetime.fromisoformat(cached['cached_at'])
+                        age = datetime.utcnow() - cached_time
+                        hours = int(age.total_seconds() // 3600)
+                        minutes = int((age.total_seconds() % 3600) // 60)
+                        if hours > 0:
+                            cache_age_str = f"{hours}h {minutes}m ago"
+                        else:
+                            cache_age_str = f"{minutes}m ago"
+                    except (ValueError, TypeError):
+                        cache_age_str = "recently"
             else:
                 # No fresh cache - scrape new data
                 results = po10_scraper.get_athlete_by_id(athlete_id)
@@ -621,7 +663,10 @@ def power_of_10():
         'power_of_10.html',
         results=results,
         error=error,
-        distance_comparisons=distance_comparisons
+        distance_comparisons=distance_comparisons,
+        from_cache=from_cache,
+        cache_age_str=cache_age_str,
+        refresh_cooldown_hours=REFRESH_COOLDOWN_HOURS
     )
 
 

@@ -1,0 +1,32 @@
+Database Migrations
+===================
+
+This directory contains database migrations managed by Flask-Migrate (Alembic).
+
+Commands
+--------
+
+Initialize (already done):
+    flask db init
+
+Create a new migration after model changes:
+    flask db migrate -m "Description of changes"
+
+Apply migrations to database:
+    flask db upgrade
+
+Rollback last migration:
+    flask db downgrade
+
+Show current migration:
+    flask db current
+
+Show migration history:
+    flask db history
+
+Notes
+-----
+
+- Always review auto-generated migrations before applying
+- Test migrations on a development database first
+- Back up production databases before running migrations

@@ -20,7 +20,7 @@
         </nav>
 
         <main>
-            <form method="POST" class="search-form">
+            <form method="POST" class="search-form" id="search-form">
                 <div class="form-group">
                     <label for="athlete_id">Enter your Parkrun ID:</label>
                     <div class="input-row">
@@ -33,11 +33,19 @@
                             required
                             {% if results %}value="{{ results.athlete_id }}"{% endif %}
                         >
-                        <button type="submit">Analyse</button>
+                        <button type="submit" id="submit-btn">Analyse</button>
                     </div>
                     <p class="hint">Find your ID on your parkrun athlete page URL</p>
                 </div>
+                <input type="hidden" name="force_refresh" id="force_refresh" value="0">
             </form>
+
+            <!-- Loading Indicator -->
+            <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Fetching your parkrun data...</p>
+                <p class="loading-note">This may take 20-30 seconds on first load</p>
+            </div>
 
             {% if error %}
             <div class="error-message">
@@ -50,6 +58,17 @@
                 <div class="athlete-info">
                     <h2>{{ results.name }}</h2>
                     <p class="total-runs">{{ results.total_runs }} parkruns completed</p>
+                    {% if from_cache %}
+                    <div class="cache-info">
+                        <span class="cache-badge">Cached data</span>
+                        {% if cache_age_str %}
+                        <span class="cache-age">Updated {{ cache_age_str }}</span>
+                        {% endif %}
+                        <button type="button" class="refresh-btn" onclick="forceRefresh()">
+                            &#8635; Refresh
+                        </button>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Main Rating Card - Based on Typical Time -->
@@ -334,14 +353,20 @@
     <script>
         (function() {
             const STORAGE_KEY = 'parkrun_athlete_id';
-            const form = document.querySelector('.search-form');
+            const form = document.getElementById('search-form');
             const input = document.getElementById('athlete_id');
+            const submitBtn = document.getElementById('submit-btn');
+            const loadingIndicator = document.getElementById('loading-indicator');
             const hasResults = document.querySelector('.results-section') !== null;
 
-            // Save athlete ID on form submit
+            // Show loading indicator on form submit
             form.addEventListener('submit', function() {
                 if (input.value) {
                     sessionStorage.setItem(STORAGE_KEY, input.value);
+                    // Show loading indicator
+                    loadingIndicator.style.display = 'block';
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Loading...';
                 }
             });
 
@@ -354,6 +379,20 @@
                 }
             }
         })();
+
+        // Force refresh function - bypasses cache
+        function forceRefresh() {
+            const form = document.getElementById('search-form');
+            const forceRefreshInput = document.getElementById('force_refresh');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const submitBtn = document.getElementById('submit-btn');
+
+            forceRefreshInput.value = '1';
+            loadingIndicator.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Refreshing...';
+            form.submit();
+        }
     </script>
 </body>
 </html>
