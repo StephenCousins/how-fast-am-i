@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from typing import Optional, Dict, List
 from urllib.parse import quote
 
-from utils import parse_time_to_seconds, seconds_to_time_str
+from utils import parse_time_to_seconds, seconds_to_time_str, create_retry_session
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,8 @@ class AthlinksScraper:
     }
 
     def __init__(self):
-        self.session = requests.Session()
+        # Create session with automatic retry on transient failures
+        self.session = create_retry_session(retries=3, backoff_factor=0.5)
         self.session.headers.update(self.HEADERS)
         self.scraper_api_key = os.environ.get('SCRAPER_API_KEY')
         if self.scraper_api_key:

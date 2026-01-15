@@ -1,9 +1,15 @@
 """
-Tests for time conversion utility functions.
+Tests for utility functions.
 """
 
 import pytest
-from utils import parse_time_to_seconds, seconds_to_time_str, time_str_to_seconds
+import requests
+from utils import (
+    parse_time_to_seconds,
+    seconds_to_time_str,
+    time_str_to_seconds,
+    create_retry_session,
+)
 
 
 class TestParseTimeToSeconds:
@@ -186,3 +192,48 @@ class TestAlias:
 
     def test_alias_returns_same_result(self):
         assert time_str_to_seconds("25:30") == parse_time_to_seconds("25:30")
+
+
+class TestCreateRetrySession:
+    """Tests for create_retry_session function."""
+
+    def test_returns_session(self):
+        session = create_retry_session()
+        assert isinstance(session, requests.Session)
+
+    def test_default_parameters(self):
+        session = create_retry_session()
+        # Verify adapters are mounted
+        assert "http://" in session.adapters
+        assert "https://" in session.adapters
+
+    def test_custom_retries(self):
+        session = create_retry_session(retries=5)
+        adapter = session.get_adapter("https://")
+        assert adapter.max_retries.total == 5
+
+    def test_custom_backoff_factor(self):
+        session = create_retry_session(backoff_factor=1.0)
+        adapter = session.get_adapter("https://")
+        assert adapter.max_retries.backoff_factor == 1.0
+
+    def test_custom_status_forcelist(self):
+        session = create_retry_session(status_forcelist=(429, 500, 503))
+        adapter = session.get_adapter("https://")
+        assert 429 in adapter.max_retries.status_forcelist
+        assert 500 in adapter.max_retries.status_forcelist
+        assert 503 in adapter.max_retries.status_forcelist
+
+    def test_http_and_https_adapters_mounted(self):
+        session = create_retry_session()
+        http_adapter = session.get_adapter("http://example.com")
+        https_adapter = session.get_adapter("https://example.com")
+        # Both should have retry strategy
+        assert http_adapter.max_retries.total == 3  # default
+        assert https_adapter.max_retries.total == 3  # default
+
+    def test_allowed_methods(self):
+        session = create_retry_session()
+        adapter = session.get_adapter("https://")
+        assert "GET" in adapter.max_retries.allowed_methods
+        assert "POST" in adapter.max_retries.allowed_methods

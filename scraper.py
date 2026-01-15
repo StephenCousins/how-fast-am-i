@@ -12,7 +12,7 @@ from typing import Optional
 from urllib.parse import quote
 import re
 
-from utils import parse_time_to_seconds, seconds_to_time_str
+from utils import parse_time_to_seconds, seconds_to_time_str, create_retry_session
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,8 @@ class ParkrunScraper:
     }
 
     def __init__(self):
-        self.session = requests.Session()
+        # Create session with automatic retry on transient failures
+        self.session = create_retry_session(retries=3, backoff_factor=0.5)
         self.session.headers.update(self.HEADERS)
         # Check for ScraperAPI key (used on Railway to bypass IP blocks)
         self.scraper_api_key = os.environ.get('SCRAPER_API_KEY')

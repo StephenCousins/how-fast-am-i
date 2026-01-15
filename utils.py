@@ -6,6 +6,40 @@ Contains common time conversion functions used across multiple modules.
 import re
 from typing import Optional
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+
+def create_retry_session(
+    retries: int = 3,
+    backoff_factor: float = 0.5,
+    status_forcelist: tuple = (500, 502, 503, 504),
+) -> requests.Session:
+    """
+    Create a requests session with retry logic for transient failures.
+
+    Args:
+        retries: Number of retries for failed requests
+        backoff_factor: Wait time multiplier between retries (0.5 = 0.5s, 1s, 2s...)
+        status_forcelist: HTTP status codes that trigger a retry
+
+    Returns:
+        Configured requests.Session with retry adapter
+    """
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+        allowed_methods=["GET", "POST"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
 
 def parse_time_to_seconds(time_str: str) -> Optional[int]:
     """

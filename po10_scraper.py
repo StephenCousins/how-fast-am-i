@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from typing import Optional
 import re
 
-from utils import parse_time_to_seconds, seconds_to_time_str
+from utils import parse_time_to_seconds, seconds_to_time_str, create_retry_session
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,8 @@ class PowerOf10Scraper:
     }
 
     def __init__(self):
-        self.session = requests.Session()
+        # Create session with automatic retry on transient failures
+        self.session = create_retry_session(retries=3, backoff_factor=0.5)
         self.session.headers.update(self.HEADERS)
 
     def get_athlete_by_id(self, athlete_id: str) -> dict:
