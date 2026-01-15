@@ -9,6 +9,14 @@ from utils import (
     seconds_to_time_str,
     time_str_to_seconds,
     create_retry_session,
+    validate_athlete_id,
+    validate_parkrun_id,
+    validate_po10_id,
+    validate_athlinks_id,
+    ValidationResult,
+    MAX_PARKRUN_ID_LENGTH,
+    MAX_PO10_ID_LENGTH,
+    MAX_ATHLINKS_ID_LENGTH,
 )
 
 
@@ -237,3 +245,164 @@ class TestCreateRetrySession:
         adapter = session.get_adapter("https://")
         assert "GET" in adapter.max_retries.allowed_methods
         assert "POST" in adapter.max_retries.allowed_methods
+
+
+class TestValidationResult:
+    """Tests for ValidationResult class."""
+
+    def test_valid_result_is_truthy(self):
+        result = ValidationResult(True, None, "123456")
+        assert result
+        assert result.is_valid
+        assert result.sanitized_id == "123456"
+        assert result.error_message is None
+
+    def test_invalid_result_is_falsy(self):
+        result = ValidationResult(False, "Error message")
+        assert not result
+        assert not result.is_valid
+        assert result.error_message == "Error message"
+
+
+class TestValidateAthleteId:
+    """Tests for validate_athlete_id function."""
+
+    # Valid IDs
+    def test_valid_id(self):
+        result = validate_athlete_id("123456", platform="parkrun")
+        assert result.is_valid
+        assert result.sanitized_id == "123456"
+        assert result.error_message is None
+
+    def test_valid_id_with_whitespace(self):
+        result = validate_athlete_id("  123456  ", platform="parkrun")
+        assert result.is_valid
+        assert result.sanitized_id == "123456"
+
+    def test_valid_id_with_leading_zeros(self):
+        result = validate_athlete_id("0123456", platform="parkrun")
+        assert result.is_valid
+        assert result.sanitized_id == "0123456"
+
+    # Empty/None values
+    def test_empty_string(self):
+        result = validate_athlete_id("", platform="parkrun")
+        assert not result.is_valid
+        assert "Please enter" in result.error_message
+
+    def test_whitespace_only(self):
+        result = validate_athlete_id("   ", platform="parkrun")
+        assert not result.is_valid
+        assert "Please enter" in result.error_message
+
+    def test_none_value(self):
+        result = validate_athlete_id(None, platform="parkrun")
+        assert not result.is_valid
+        assert "Please enter" in result.error_message
+
+    # Non-numeric characters
+    def test_letters(self):
+        result = validate_athlete_id("abc123", platform="parkrun")
+        assert not result.is_valid
+        assert "only numbers" in result.error_message
+
+    def test_special_characters(self):
+        result = validate_athlete_id("123-456", platform="parkrun")
+        assert not result.is_valid
+        assert "only numbers" in result.error_message
+
+    def test_decimal(self):
+        result = validate_athlete_id("123.456", platform="parkrun")
+        assert not result.is_valid
+        assert "only numbers" in result.error_message
+
+    def test_negative_sign(self):
+        result = validate_athlete_id("-123456", platform="parkrun")
+        assert not result.is_valid
+        assert "only numbers" in result.error_message
+
+    # Length checks
+    def test_too_long_parkrun(self):
+        long_id = "1" * (MAX_PARKRUN_ID_LENGTH + 1)
+        result = validate_athlete_id(long_id, platform="parkrun")
+        assert not result.is_valid
+        assert "too long" in result.error_message
+
+    def test_max_length_parkrun(self):
+        max_id = "1" * MAX_PARKRUN_ID_LENGTH
+        result = validate_athlete_id(max_id, platform="parkrun")
+        assert result.is_valid
+
+    # Zero value
+    def test_zero_value(self):
+        result = validate_athlete_id("0", platform="parkrun")
+        assert not result.is_valid
+        assert "positive number" in result.error_message
+
+    def test_all_zeros(self):
+        result = validate_athlete_id("0000", platform="parkrun")
+        assert not result.is_valid
+        assert "positive number" in result.error_message
+
+    # Platform-specific error messages
+    def test_parkrun_error_message(self):
+        result = validate_athlete_id("", platform="parkrun")
+        assert "Parkrun" in result.error_message
+
+    def test_po10_error_message(self):
+        result = validate_athlete_id("", platform="po10")
+        assert "Power of 10" in result.error_message
+
+    def test_athlinks_error_message(self):
+        result = validate_athlete_id("", platform="athlinks")
+        assert "Athlinks" in result.error_message
+
+
+class TestPlatformSpecificValidation:
+    """Tests for platform-specific validation functions."""
+
+    def test_validate_parkrun_id_valid(self):
+        result = validate_parkrun_id("123456")
+        assert result.is_valid
+        assert result.sanitized_id == "123456"
+
+    def test_validate_parkrun_id_invalid(self):
+        result = validate_parkrun_id("")
+        assert not result.is_valid
+        assert "Parkrun" in result.error_message
+
+    def test_validate_po10_id_valid(self):
+        result = validate_po10_id("434569")
+        assert result.is_valid
+        assert result.sanitized_id == "434569"
+
+    def test_validate_po10_id_invalid(self):
+        result = validate_po10_id("abc")
+        assert not result.is_valid
+        assert "Power of 10" in result.error_message
+
+    def test_validate_athlinks_id_valid(self):
+        result = validate_athlinks_id("319145186")
+        assert result.is_valid
+        assert result.sanitized_id == "319145186"
+
+    def test_validate_athlinks_id_invalid(self):
+        result = validate_athlinks_id("not-a-number")
+        assert not result.is_valid
+        assert "Athlinks" in result.error_message
+
+    # Real-world ID examples
+    def test_real_parkrun_id(self):
+        # Typical parkrun ID format
+        result = validate_parkrun_id("7654321")
+        assert result.is_valid
+
+    def test_real_po10_id(self):
+        # Typical PO10 ID format
+        result = validate_po10_id("434569")
+        assert result.is_valid
+
+    def test_real_athlinks_id(self):
+        # Typical Athlinks ID format (can be longer)
+        result = validate_athlinks_id("319145186")
+        assert result.is_valid

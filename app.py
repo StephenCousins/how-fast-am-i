@@ -30,7 +30,7 @@ REFRESH_COOLDOWN_HOURS = int(os.environ.get('REFRESH_COOLDOWN_HOURS', 6))
 from scraper import ParkrunScraper
 from po10_scraper import PowerOf10Scraper
 # from athlinks_scraper import AthlinksScraper  # Disabled until API key received
-from utils import seconds_to_time_str
+from utils import seconds_to_time_str, validate_parkrun_id, validate_po10_id
 from comparisons import get_full_comparison, get_percentile, DISTANCE_AVERAGES
 from distance_comparisons import get_all_distance_comparisons, get_distance_comparison
 from age_grading import calculate_age_grade, get_age_grade_category
@@ -420,13 +420,14 @@ def index():
     from_cache = False
 
     if request.method == 'POST':
-        athlete_id = request.form.get('athlete_id', '').strip()
+        athlete_id_input = request.form.get('athlete_id', '')
 
-        if not athlete_id:
-            error = "Please enter a parkrun ID"
-        elif not athlete_id.isdigit():
-            error = "Parkrun ID should be a number (e.g., 123456)"
+        # Validate the athlete ID
+        validation = validate_parkrun_id(athlete_id_input)
+        if not validation:
+            error = validation.error_message
         else:
+            athlete_id = validation.sanitized_id
             # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
             cached = get_cached_parkrun_athlete(athlete_id, fresh_only=True)
             if cached:
@@ -499,13 +500,14 @@ def power_of_10():
     from_cache = False
 
     if request.method == 'POST':
-        athlete_id = request.form.get('athlete_id', '').strip()
+        athlete_id_input = request.form.get('athlete_id', '')
 
-        if not athlete_id:
-            error = "Please enter a Power of 10 athlete ID"
-        elif not athlete_id.isdigit():
-            error = "Athlete ID should be a number"
+        # Validate the athlete ID
+        validation = validate_po10_id(athlete_id_input)
+        if not validation:
+            error = validation.error_message
         else:
+            athlete_id = validation.sanitized_id
             # Check for fresh cached data (less than REFRESH_COOLDOWN_HOURS old)
             cached = get_cached_po10_athlete(athlete_id, fresh_only=True)
             if cached and cached.get('pbs'):
