@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+    "__pycache__",
+    "venv",
+    ".venv",
+    "instance",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "scraper", "models", "utils", "comparisons", "age_grading", "po10_scraper", "athlinks_scraper", "async_scraper", "distance_comparisons"]

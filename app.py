@@ -39,6 +39,9 @@ from models import db, ParkrunAthlete, PowerOf10Athlete, AthlinksAthlete, Lookup
 
 app = Flask(__name__)
 
+# Secret key for session management (set via env var in production)
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(32).hex())
+
 # Database configuration
 database_url = os.environ.get('DATABASE_URL', '')
 # Railway uses postgres:// but SQLAlchemy needs postgresql://
