@@ -8,8 +8,16 @@ Supports:
 - Athlinks (USA) - Multi-distance road race results
 """
 
-import logging
 import os
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=os.environ.get("SENTRY_DSN"),
+    environment=os.environ.get("ENVIRONMENT", "production"),
+    traces_sample_rate=0.1,
+)
+
+import logging
 import json
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request
